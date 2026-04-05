@@ -221,6 +221,12 @@ where
         self
     }
 
+    /// Returns a mutable reference to the underlying API client, allowing
+    /// callers to configure per-turn state (e.g. a spinner-stop flag).
+    pub fn api_client_mut(&mut self) -> &mut C {
+        &mut self.api_client
+    }
+
     fn run_pre_tool_use_hook(&mut self, tool_name: &str, input: &str) -> HookRunResult {
         if let Some(reporter) = self.hook_progress_reporter.as_mut() {
             self.hook_runner.run_pre_tool_use_with_context(

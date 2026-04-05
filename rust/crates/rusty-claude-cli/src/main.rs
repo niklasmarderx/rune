@@ -2197,6 +2197,11 @@ impl LiveCli {
         // Animated spinner with rotating creative messages
         let stop_spinner = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop_flag = stop_spinner.clone();
+
+        // Share the stop flag with the API client so it can kill the spinner
+        // the moment the first visible content arrives from the stream.
+        runtime.api_client_mut().spinner_stop = Some(stop_spinner.clone());
+
         let spinner_handle = std::thread::spawn(move || {
             const THINKING_MESSAGES: &[&str] = &[
                 "Thinking...",
@@ -2237,15 +2242,21 @@ impl LiveCli {
         let result = runtime.run_turn(input, Some(&mut permission_prompter));
         hook_abort_monitor.stop();
 
-        // Stop spinner animation
+        // Stop spinner animation (may already be stopped by the stream handler)
+        let spinner_was_stopped_by_stream = stop_spinner.load(std::sync::atomic::Ordering::Relaxed);
         stop_spinner.store(true, std::sync::atomic::Ordering::Relaxed);
         let _ = spinner_handle.join();
 
         match result {
             Ok(summary) => {
                 self.replace_runtime(runtime)?;
-                let mut spinner = Spinner::new();
-                spinner.finish("Done", TerminalRenderer::new().color_theme(), &mut stdout)?;
+                // Only print "Done" if the spinner was still active when the
+                // turn finished — if the stream already cleared it and wrote
+                // visible content, printing "Done" would be noise.
+                if !spinner_was_stopped_by_stream {
+                    let mut spinner = Spinner::new();
+                    spinner.finish("Done", TerminalRenderer::new().color_theme(), &mut stdout)?;
+                }
                 println!();
                 if let Some(event) = summary.auto_compaction {
                     println!(
@@ -2258,12 +2269,16 @@ impl LiveCli {
             }
             Err(error) => {
                 runtime.shutdown_plugins()?;
-                let mut spinner = Spinner::new();
-                spinner.fail(
-                    "Request failed",
-                    TerminalRenderer::new().color_theme(),
-                    &mut stdout,
-                )?;
+                if !spinner_was_stopped_by_stream {
+                    let mut spinner = Spinner::new();
+                    spinner.fail(
+                        "Request failed",
+                        TerminalRenderer::new().color_theme(),
+                        &mut stdout,
+                    )?;
+                } else {
+                    eprintln!("\nRequest failed");
+                }
                 Err(Box::new(error))
             }
         }
@@ -4520,6 +4535,11 @@ struct AnthropicRuntimeClient {
     allowed_tools: Option<AllowedToolSet>,
     tool_registry: GlobalToolRegistry,
     progress_reporter: Option<InternalPromptProgressReporter>,
+    /// When set, the client will store `true` into this flag the moment the
+    /// first visible content (text or tool call) arrives from the API stream,
+    /// causing the spinner thread to exit immediately so it no longer competes
+    /// with the response output on stdout.
+    spinner_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 impl AnthropicRuntimeClient {
@@ -4544,6 +4564,7 @@ impl AnthropicRuntimeClient {
             allowed_tools,
             tool_registry,
             progress_reporter,
+            spinner_stop: None,
         })
     }
 }
@@ -4595,6 +4616,8 @@ impl ApiClient for AnthropicRuntimeClient {
             let mut pending_tool: Option<(String, String, String)> = None;
             let mut saw_stop = false;
             let mut thinking_text = String::new();
+            let mut spinner_cleared = false;
+            let spinner_stop = self.spinner_stop.clone();
 
             while let Some(event) = stream
                 .next_event()
@@ -4619,6 +4642,21 @@ impl ApiClient for AnthropicRuntimeClient {
                     ApiStreamEvent::ContentBlockDelta(delta) => match delta.delta {
                         ContentBlockDelta::TextDelta { text } => {
                             if !text.is_empty() {
+                                // Stop the spinner before writing any visible
+                                // content so the two threads don't fight over
+                                // the same terminal line.
+                                if !spinner_cleared {
+                                    if let Some(flag) = &spinner_stop {
+                                        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                        // Give the spinner thread one tick to
+                                        // exit, then clear the line ourselves.
+                                        std::thread::sleep(std::time::Duration::from_millis(100));
+                                        // CSI H = move to column 1, CSI 2K = erase entire line
+                                        let _ = write!(out, "\x1b[1G\x1b[2K");
+                                        let _ = out.flush();
+                                    }
+                                    spinner_cleared = true;
+                                }
                                 if let Some(progress_reporter) = &self.progress_reporter {
                                     progress_reporter.mark_text_phase(&text);
                                 }
@@ -4704,8 +4742,7 @@ impl ApiClient for AnthropicRuntimeClient {
                 return Ok(events);
             }
 
-            // Streaming produced no usable content. Retry once with a non-streaming
-            // request before giving up.
+            // Retry once with a non-streaming request before giving up.
             let non_stream_result = self
                 .client
                 .send_message(&MessageRequest {
