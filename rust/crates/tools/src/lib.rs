@@ -2596,7 +2596,7 @@ fn build_http_client() -> Result<Client, String> {
     Client::builder()
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::limited(10))
-        .user_agent("clawd-rust-tools/0.1")
+        .user_agent("rune-tools/0.1")
         .build()
         .map_err(|error| error.to_string())
 }
@@ -2966,7 +2966,7 @@ fn todo_store_path() -> Result<std::path::PathBuf, String> {
         return Ok(std::path::PathBuf::from(path));
     }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
-    Ok(cwd.join(".clawd-todos.json"))
+    Ok(cwd.join(".rune-todos.json"))
 }
 
 fn resolve_skill_path(skill: &str) -> Result<std::path::PathBuf, String> {
@@ -3101,7 +3101,7 @@ where
 }
 
 fn spawn_agent_job(job: AgentJob) -> Result<(), String> {
-    let thread_name = format!("clawd-agent-{}", job.manifest.agent_id);
+    let thread_name = format!("rune-agent-{}", job.manifest.agent_id);
     std::thread::Builder::new()
         .name(thread_name)
         .spawn(move || {
@@ -3821,9 +3821,9 @@ fn agent_store_dir() -> Result<std::path::PathBuf, String> {
     }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     if let Some(workspace_root) = cwd.ancestors().nth(2) {
-        return Ok(workspace_root.join(".clawd-agents"));
+        return Ok(workspace_root.join(".rune-agents"));
     }
-    Ok(cwd.join(".clawd-agents"))
+    Ok(cwd.join(".rune-agents"))
 }
 
 fn make_agent_id() -> String {
@@ -4969,7 +4969,7 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .expect("time")
             .as_nanos();
-        std::env::temp_dir().join(format!("clawd-tools-{unique}-{name}"))
+        std::env::temp_dir().join(format!("rune-tools-{unique}-{name}"))
     }
 
     fn run_git(cwd: &Path, args: &[&str]) {
@@ -6595,7 +6595,7 @@ mod tests {
     #[test]
     fn brief_returns_sent_message_and_attachment_metadata() {
         let attachment = std::env::temp_dir().join(format!(
-            "clawd-brief-{}.png",
+            "rune-brief-{}.png",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time")
@@ -6626,7 +6626,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "clawd-config-{}",
+            "rune-config-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time")
@@ -6692,7 +6692,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "clawd-plan-mode-{}",
+            "rune-plan-mode-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time")
@@ -6765,7 +6765,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let root = std::env::temp_dir().join(format!(
-            "clawd-plan-mode-empty-{}",
+            "rune-plan-mode-empty-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time")
@@ -6887,7 +6887,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = std::env::temp_dir().join(format!(
-            "clawd-pwsh-bin-{}",
+            "rune-pwsh-bin-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time")
@@ -6944,7 +6944,7 @@ printf 'pwsh:%s' "$1"
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let original_path = std::env::var("PATH").unwrap_or_default();
         let empty_dir = std::env::temp_dir().join(format!(
-            "clawd-empty-bin-{}",
+            "rune-empty-bin-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .expect("time")
@@ -7062,7 +7062,7 @@ printf 'pwsh:%s' "$1"
         let result = run_task_packet(TaskPacket {
             objective: "Ship packetized runtime task".to_string(),
             scope: "runtime/task system".to_string(),
-            repo: "claw-code-parity".to_string(),
+            repo: "rune-parity".to_string(),
             branch_policy: "origin/main only".to_string(),
             acceptance_tests: vec![
                 "cargo build --workspace".to_string(),
@@ -7078,7 +7078,7 @@ printf 'pwsh:%s' "$1"
         assert_eq!(output["status"], "created");
         assert_eq!(output["prompt"], "Ship packetized runtime task");
         assert_eq!(output["description"], "runtime/task system");
-        assert_eq!(output["task_packet"]["repo"], "claw-code-parity");
+        assert_eq!(output["task_packet"]["repo"], "rune-parity");
         assert_eq!(
             output["task_packet"]["acceptance_tests"][1],
             "cargo test --workspace"

@@ -86,9 +86,9 @@ pub(crate) fn initialize_repo(cwd: &Path) -> Result<InitReport, Box<dyn std::err
         status: ensure_dir(&claude_dir)?,
     });
 
-    let claude_json = cwd.join(".claude.json");
+    let claude_json = cwd.join(".rune.json");
     artifacts.push(InitArtifact {
-        name: ".claude.json",
+        name: ".rune.json",
         status: write_file_if_missing(&claude_json, STARTER_CLAUDE_JSON)?,
     });
 
@@ -210,7 +210,7 @@ pub(crate) fn render_init_claude_md(cwd: &Path) -> String {
 
     lines.push("## Working agreement".to_string());
     lines.push("- Prefer small, reviewable changes and keep generated bootstrap files aligned with actual repo workflows.".to_string());
-    lines.push("- Keep shared defaults in `.claude.json`; reserve `.rune/settings.local.json` for machine-local overrides.".to_string());
+    lines.push("- Keep shared defaults in `.rune.json`; reserve `.rune/settings.local.json` for machine-local overrides.".to_string());
     lines.push("- Do not overwrite existing `RUNE.md` content automatically; update it intentionally when repo workflows change.".to_string());
     lines.push(String::new());
 
@@ -356,14 +356,14 @@ mod tests {
         let report = initialize_repo(&root).expect("init should succeed");
         let rendered = report.render();
         assert!(rendered.contains(".rune/           created"));
-        assert!(rendered.contains(".claude.json     created"));
+        assert!(rendered.contains(".rune.json       created"));
         assert!(rendered.contains(".gitignore       created"));
         assert!(rendered.contains("RUNE.md          created"));
         assert!(root.join(".rune").is_dir());
-        assert!(root.join(".claude.json").is_file());
+        assert!(root.join(".rune.json").is_file());
         assert!(root.join("RUNE.md").is_file());
         assert_eq!(
-            fs::read_to_string(root.join(".claude.json")).expect("read claude json"),
+            fs::read_to_string(root.join(".rune.json")).expect("read claude json"),
             concat!(
                 "{\n",
                 "  \"permissions\": {\n",
@@ -396,7 +396,7 @@ mod tests {
         let second = initialize_repo(&root).expect("second init should succeed");
         let second_rendered = second.render();
         assert!(second_rendered.contains(".rune/           skipped (already exists)"));
-        assert!(second_rendered.contains(".claude.json     skipped (already exists)"));
+        assert!(second_rendered.contains(".rune.json       skipped (already exists)"));
         assert!(second_rendered.contains(".gitignore       skipped (already exists)"));
         assert!(second_rendered.contains("RUNE.md          skipped (already exists)"));
         assert_eq!(

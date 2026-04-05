@@ -1,114 +1,44 @@
-# Claw Code Philosophy
+# Rune Code Philosophy
 
-## Stop Staring at the Files
+## Principles
 
-If you only look at the generated files in this repository, you are looking at the wrong layer.
+Rune Code is built on a small set of convictions about what AI-assisted coding tools should be.
 
-The Python rewrite was a byproduct. The Rust rewrite was also a byproduct. The real thing worth studying is the **system that produced them**: a clawhip-based coordination loop where humans give direction and autonomous claws execute the work.
+### 1. Multi-provider support is a feature, not a compromise
 
-Claw Code is not just a codebase. It is a public demonstration of what happens when:
+Developers should not be locked into a single AI provider. Rune supports multiple backends so you can choose the model that fits the task, switch providers when pricing or capabilities change, and avoid vendor lock-in without changing your workflow.
 
-- a human provides clear direction,
-- multiple coding agents coordinate in parallel,
-- notification routing is pushed out of the agent context window,
-- planning, execution, review, and retry loops are automated,
-- and the human does **not** sit in a terminal micromanaging every step.
+### 2. Permission-first design
 
-## The Human Interface Is Discord
+Every tool action that touches the filesystem, runs a process, or reaches the network should be gated by an explicit permission model. Read-only, workspace-write, and full-access modes exist so that the default is safe and the user opts in to power, not out of risk.
 
-The important interface here is not tmux, Vim, SSH, or a terminal multiplexer.
+### 3. Extensibility through MCP and plugins
 
-The real human interface is a Discord channel.
+The tool surface should be open. MCP server integrations, plugin hooks, and skill registries let teams extend Rune without forking it. The core runtime stays small; capabilities grow through composition.
 
-A person can type a sentence from a phone, walk away, sleep, or do something else. The claws read the directive, break it into tasks, assign roles, write code, run tests, argue over failures, recover, and push when the work passes.
+### 4. Machine-readable by default
 
-That is the philosophy: **humans set direction; claws perform the labor.**
+An AI coding harness is used by humans and by other programs. Output formats, status commands, session state, and event streams should be structured and deterministic so that automation is a first-class use case, not an afterthought.
 
-## The Three-Part System
+### 5. Honest parity tracking
 
-### 1. OmX (`oh-my-codex`)
-[oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) provides the workflow layer.
+When reimplementing an existing tool surface, track what works and what does not. Parity documents should be maintained and honest. Stubs should be labeled as stubs. Partial implementations should say so. Users and contributors deserve accurate expectations.
 
-It turns short directives into structured execution:
-- planning keywords
-- execution modes
-- persistent verification loops
-- parallel multi-agent workflows
+### 6. Small, reviewable changes
 
-This is the layer that converts a sentence into a repeatable work protocol.
+Large undifferentiated diffs are hard to review and easy to regress. Prefer incremental changes that can be understood, tested, and merged independently.
 
-### 2. clawhip
-[clawhip](https://github.com/Yeachan-Heo/clawhip) is the event and notification router.
+## What still matters
 
-It watches:
-- git commits
-- tmux sessions
-- GitHub issues and PRs
-- agent lifecycle events
-- channel delivery
+As coding intelligence becomes cheaper and more widely available, the durable differentiators are not raw code generation speed. What still matters:
 
-Its job is to keep monitoring and delivery **outside** the coding agent's context window so the agents can stay focused on implementation instead of status formatting and notification routing.
+- Product taste and direction
+- System design and architecture decisions
+- Human trust and operational stability
+- Judgment about what to build next
 
-### 3. OmO (`oh-my-openagent`)
-[oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) handles multi-agent coordination.
+The job of the human is not to out-type the machine. The job of the human is to decide what deserves to exist.
 
-This is where planning, handoffs, disagreement resolution, and verification loops happen across agents.
+## Short version
 
-When Architect, Executor, and Reviewer disagree, OmO provides the structure for that loop to converge instead of collapse.
-
-## The Real Bottleneck Changed
-
-The bottleneck is no longer typing speed.
-
-When agent systems can rebuild a codebase in hours, the scarce resource becomes:
-- architectural clarity
-- task decomposition
-- judgment
-- taste
-- conviction about what is worth building
-- knowing which parts can be parallelized and which parts must stay constrained
-
-A fast agent team does not remove the need for thinking. It makes clear thinking even more valuable.
-
-## What Claw Code Demonstrates
-
-Claw Code demonstrates that a repository can be:
-
-- **autonomously built in public**
-- coordinated by claws/lobsters rather than human pair-programming alone
-- operated through a chat interface
-- continuously improved by structured planning/execution/review loops
-- maintained as a showcase of the coordination layer, not just the output files
-
-The code is evidence.
-The coordination system is the product lesson.
-
-## What Still Matters
-
-As coding intelligence gets cheaper and more available, the durable differentiators are not raw coding output.
-
-What still matters:
-- product taste
-- direction
-- system design
-- human trust
-- operational stability
-- judgment about what to build next
-
-In that world, the job of the human is not to out-type the machine.
-The job of the human is to decide what deserves to exist.
-
-## Short Version
-
-**Claw Code is a demo of autonomous software development.**
-
-Humans provide direction.
-Claws coordinate, build, test, recover, and push.
-The repository is the artifact.
-The philosophy is the system behind it.
-
-## Related explanation
-
-For the longer public explanation behind this philosophy, see:
-
-- https://x.com/realsigridjin/status/2039472968624185713
+Rune Code is a multi-provider, permission-first, extensible AI coding harness. It is built to be safe by default, honest about its capabilities, and open to extension.

@@ -409,7 +409,7 @@ fn prepare_plugin_fixture(workspace: &HarnessWorkspace) {
         .join("external-plugins")
         .join("parity-plugin");
     let tool_dir = plugin_root.join("tools");
-    let manifest_dir = plugin_root.join(".claude-plugin");
+    let manifest_dir = plugin_root.join(".rune-plugin");
     fs::create_dir_all(&tool_dir).expect("plugin tools dir");
     fs::create_dir_all(&manifest_dir).expect("plugin manifest dir");
 

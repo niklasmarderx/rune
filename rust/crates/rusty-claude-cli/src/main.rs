@@ -2932,7 +2932,7 @@ impl LiveCli {
 
 fn sessions_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let cwd = env::current_dir()?;
-    let path = cwd.join(".claw").join("sessions");
+    let path = cwd.join(".rune").join("sessions");
     fs::create_dir_all(&path)?;
     Ok(path)
 }
@@ -5741,7 +5741,7 @@ mod tests {
     }
 
     fn write_plugin_fixture(root: &Path, name: &str, include_hooks: bool, include_lifecycle: bool) {
-        fs::create_dir_all(root.join(".claude-plugin")).expect("manifest dir");
+        fs::create_dir_all(root.join(".rune-plugin")).expect("manifest dir");
         if include_hooks {
             fs::create_dir_all(root.join("hooks")).expect("hooks dir");
             fs::write(
@@ -5775,7 +5775,7 @@ mod tests {
             ""
         };
         fs::write(
-            root.join(".claude-plugin").join("plugin.json"),
+            root.join(".rune-plugin").join("plugin.json"),
             format!(
                 "{{\n  \"name\": \"{name}\",\n  \"version\": \"1.0.0\",\n  \"description\": \"runtime plugin fixture\"{hooks}{lifecycle}\n}}"
             ),
@@ -5802,24 +5802,24 @@ mod tests {
         let root = temp_dir();
         let cwd = root.join("project");
         let config_home = root.join("config-home");
-        std::fs::create_dir_all(cwd.join(".claw")).expect("project config dir should exist");
+        std::fs::create_dir_all(cwd.join(".rune")).expect("project config dir should exist");
         std::fs::create_dir_all(&config_home).expect("config home should exist");
         std::fs::write(
-            cwd.join(".claw").join("settings.json"),
+            cwd.join(".rune").join("settings.json"),
             r#"{"permissionMode":"acceptEdits"}"#,
         )
         .expect("project config should write");
 
-        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        let original_config_home = std::env::var("RUNE_CONFIG_HOME").ok();
         let original_permission_mode = std::env::var("RUSTY_CLAUDE_PERMISSION_MODE").ok();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("RUNE_CONFIG_HOME", &config_home);
         std::env::remove_var("RUSTY_CLAUDE_PERMISSION_MODE");
 
         let resolved = with_current_dir(&cwd, super::default_permission_mode);
 
         match original_config_home {
-            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
-            None => std::env::remove_var("CLAW_CONFIG_HOME"),
+            Some(value) => std::env::set_var("RUNE_CONFIG_HOME", value),
+            None => std::env::remove_var("RUNE_CONFIG_HOME"),
         }
         match original_permission_mode {
             Some(value) => std::env::set_var("RUSTY_CLAUDE_PERMISSION_MODE", value),
@@ -5836,24 +5836,24 @@ mod tests {
         let root = temp_dir();
         let cwd = root.join("project");
         let config_home = root.join("config-home");
-        std::fs::create_dir_all(cwd.join(".claw")).expect("project config dir should exist");
+        std::fs::create_dir_all(cwd.join(".rune")).expect("project config dir should exist");
         std::fs::create_dir_all(&config_home).expect("config home should exist");
         std::fs::write(
-            cwd.join(".claw").join("settings.json"),
+            cwd.join(".rune").join("settings.json"),
             r#"{"permissionMode":"acceptEdits"}"#,
         )
         .expect("project config should write");
 
-        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        let original_config_home = std::env::var("RUNE_CONFIG_HOME").ok();
         let original_permission_mode = std::env::var("RUSTY_CLAUDE_PERMISSION_MODE").ok();
-        std::env::set_var("CLAW_CONFIG_HOME", &config_home);
+        std::env::set_var("RUNE_CONFIG_HOME", &config_home);
         std::env::set_var("RUSTY_CLAUDE_PERMISSION_MODE", "read-only");
 
         let resolved = with_current_dir(&cwd, super::default_permission_mode);
 
         match original_config_home {
-            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
-            None => std::env::remove_var("CLAW_CONFIG_HOME"),
+            Some(value) => std::env::set_var("RUNE_CONFIG_HOME", value),
+            None => std::env::remove_var("RUNE_CONFIG_HOME"),
         }
         match original_permission_mode {
             Some(value) => std::env::set_var("RUSTY_CLAUDE_PERMISSION_MODE", value),
@@ -6885,7 +6885,7 @@ UU conflicted.rs",
         let handle = create_managed_session_handle("session-alpha").expect("jsonl handle");
         assert!(handle.path.ends_with("session-alpha.jsonl"));
 
-        let legacy_path = workspace.join(".claw/sessions/legacy.json");
+        let legacy_path = workspace.join(".rune/sessions/legacy.json");
         std::fs::create_dir_all(
             legacy_path
                 .parent()
@@ -6981,7 +6981,7 @@ UU conflicted.rs",
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let rendered = crate::init::render_init_claude_md(&workspace_root);
-        assert!(rendered.contains("# CLAUDE.md"));
+        assert!(rendered.contains("# RUNE.md"));
         assert!(rendered.contains("cargo clippy --workspace --all-targets -- -D warnings"));
     }
 

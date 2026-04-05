@@ -1,21 +1,21 @@
 # ROADMAP.md
 
-# Clawable Coding Harness Roadmap
+# Automatable Coding Harness Roadmap
 
 ## Goal
 
-Turn claw-code into the most **clawable** coding harness:
+Turn rune into the most **automatable** coding harness:
 - no human-first terminal assumptions
 - no fragile prompt injection timing
 - no opaque session state
 - no hidden plugin or MCP failures
 - no manual babysitting for routine recovery
 
-This roadmap assumes the primary users are **claws wired through hooks, plugins, sessions, and channel events**.
+This roadmap assumes the primary users are **agents wired through hooks, plugins, sessions, and channel events**.
 
-## Definition of "clawable"
+## Definition of "automatable"
 
-A clawable harness is:
+An automatable harness is:
 - deterministic to start
 - machine-readable in state and failure modes
 - recoverable without a human watching the terminal
@@ -33,13 +33,13 @@ A clawable harness is:
 
 ### 2. Truth is split across layers
 - tmux state
-- clawhip event stream
+- event stream
 - git/worktree state
 - test state
 - gateway/plugin/MCP runtime state
 
 ### 3. Events are too log-shaped
-- claws currently infer too much from noisy text
+- agents currently infer too much from noisy text
 - important states are not normalized into machine-readable events
 
 ### 4. Recovery loops are too manual
@@ -57,7 +57,7 @@ A clawable harness is:
 ### 6. Plugin/MCP failures are under-classified
 - startup failures, handshake failures, config errors, partial startup, and degraded mode are not exposed cleanly enough
 
-### 7. Human UX still leaks into claw workflows
+### 7. Human UX still leaks into agent workflows
 - too much depends on terminal/TUI behavior instead of explicit agent state transitions and control APIs
 
 ## Product Principles
@@ -109,9 +109,9 @@ Provide machine control above tmux:
 - terminate worker
 
 Acceptance:
-- a claw can operate a coding worker without raw send-keys as the primary control plane
+- an agent can operate a coding worker without raw send-keys as the primary control plane
 
-## Phase 2 — Event-Native Clawhip Integration
+## Phase 2 — Event-Native Integration
 
 ### 4. Canonical lane event schema
 Define typed events such as:
@@ -129,8 +129,8 @@ Define typed events such as:
 - `branch.stale_against_main`
 
 Acceptance:
-- clawhip consumes typed lane events
-- Discord summaries are rendered from structured events instead of pane scraping alone
+- the event router consumes typed lane events
+- summaries are rendered from structured events instead of pane scraping alone
 
 ### 5. Failure taxonomy
 Normalize failure classes:
@@ -159,7 +159,7 @@ Collapse noisy event streams into:
 
 Acceptance:
 - channel status updates stay short and machine-grounded
-- claws stop inferring state from raw build spam
+- agents stop inferring state from raw build spam
 
 ## Phase 3 — Branch/Test Awareness and Auto-Recovery
 
@@ -195,7 +195,7 @@ Acceptance:
 - no more ambiguous "tests passed" messaging
 - merge policy can require the correct green level for the lane type
 
-## Phase 4 — Claws-First Task Execution
+## Phase 4 — Agent-First Task Execution
 
 ### 10. Typed task packet format
 Define a structured task packet with fields like:
@@ -209,7 +209,7 @@ Define a structured task packet with fields like:
 - escalation policy
 
 Acceptance:
-- claws can dispatch work without relying on long natural-language prompt blobs alone
+- agents can dispatch work without relying on long natural-language prompt blobs alone
 - task packets can be logged, retried, and transformed safely
 
 ### 11. Policy engine for autonomous coding
@@ -222,10 +222,10 @@ Encode automation rules such as:
 Acceptance:
 - doctrine moves from chat instructions into executable rules
 
-### 12. Claw-native dashboards / lane board
+### 12. Agent-native dashboards / lane board
 Expose a machine-readable board of:
 - repos
-- active claws
+- active agents
 - worktrees
 - branch freshness
 - red/green state
@@ -234,7 +234,7 @@ Expose a machine-readable board of:
 - last meaningful event
 
 Acceptance:
-- claws can query status directly
+- agents can query status directly
 - human-facing views become a rendering layer, not the source of truth
 
 ## Phase 5 — Plugin and MCP Lifecycle Maturity
@@ -268,7 +268,7 @@ Acceptance:
 
 ## Immediate Backlog (from current real pain)
 
-Priority order: P0 = blocks CI/green state, P1 = blocks integration wiring, P2 = clawability hardening, P3 = swarm-efficiency improvements.
+Priority order: P0 = blocks CI/green state, P1 = blocks integration wiring, P2 = automation hardening, P3 = swarm-efficiency improvements.
 
 **P0 — Fix first (CI reliability)**
 1. Isolate `render_diff_report` tests into tmpdir — flaky under `cargo test --workspace`; reads real working-tree state; breaks CI during active worktree ops
@@ -279,9 +279,9 @@ Priority order: P0 = blocks CI/green state, P1 = blocks integration wiring, P2 =
 6. Add branding/source-of-truth residue checks for docs — after repo migration, old org names can survive in badges, star-history URLs, and copied snippets; docs need a consistency pass or CI lint to catch stale branding automatically
 7. Reconcile README product narrative with current repo reality — top-level docs now say the active workspace is Rust, but later sections still describe the repo as Python-first; users should not have to infer which implementation is canonical
 8. Eliminate warning spam from first-run help/build path — `cargo run -p rusty-claude-cli -- --help` currently prints a wall of compile warnings before the actual help text, which pollutes the first-touch UX and hides the product surface behind unrelated noise
-9. Promote `doctor` from slash-only to top-level CLI entrypoint — users naturally try `claw doctor`, but today it errors and tells them to enter a REPL or resume path first; healthcheck flows should be callable directly from the shell
+9. Promote `doctor` from slash-only to top-level CLI entrypoint — users naturally try `rune doctor`, but today it errors and tells them to enter a REPL or resume path first; healthcheck flows should be callable directly from the shell
 10. Make machine-readable status commands actually machine-readable — `status` and `sandbox` accept the global `--output-format json` flag path, but currently still render prose tables, which breaks shell automation and agent-friendly health polling
-11. Unify legacy config/skill namespaces in user-facing output — `skills` currently surfaces mixed project roots like `.codex` and `.claude`, which leaks historical layers into the current product and makes it unclear which config namespace is canonical
+11. Unify legacy config/skill namespaces in user-facing output — `skills` currently surfaces mixed project roots from different config namespaces, which leaks historical layers into the current product and makes it unclear which config namespace is canonical
 12. Honor JSON output on inventory commands like `skills` and `mcp` — these are exactly the commands agents and shell scripts want to inspect programmatically, but `--output-format json` still yields prose, forcing text scraping where structured inventory should exist
 13. Audit `--output-format` contract across the whole CLI surface — current behavior is inconsistent by subcommand, so agents cannot trust the global flag without command-by-command probing; the format contract itself needs to become deterministic
 
@@ -290,10 +290,10 @@ Priority order: P0 = blocks CI/green state, P1 = blocks integration wiring, P2 =
 3. Wire lane-completion emitter — **done**: `lane_completion` module with `detect_lane_completion()` auto-sets `LaneContext::completed` from session-finished + tests-green + push-complete → policy closeout
 4. Wire `SummaryCompressor` into the lane event pipeline — **done**: `compress_summary_text()` feeds into `LaneEvent::Finished` detail field in `tools/src/lib.rs`
 
-**P2 — Clawability hardening (original backlog)**
+**P2 — Automation hardening (original backlog)**
 5. Worker readiness handshake + trust resolution — **done**: `WorkerStatus` state machine with `Spawning` → `TrustRequired` → `ReadyForPrompt` → `PromptAccepted` → `Running` lifecycle, `trust_auto_resolve` + `trust_gate_cleared` gating
 6. Prompt misdelivery detection and recovery — **done**: `prompt_delivery_attempts` counter, `PromptMisdelivery` event detection, `auto_recover_prompt_misdelivery` + `replay_prompt` recovery arm
-7. Canonical lane event schema in clawhip — **done**: `LaneEvent` enum with `Started/Blocked/Failed/Finished` variants, `LaneEvent::new()` typed constructor, `tools/src/lib.rs` integration
+7. Canonical lane event schema — **done**: `LaneEvent` enum with `Started/Blocked/Failed/Finished` variants, `LaneEvent::new()` typed constructor, `tools/src/lib.rs` integration
 8. Failure taxonomy + blocker normalization — **done**: `WorkerFailureKind` enum (`TrustGate/PromptDelivery/Protocol/Provider`), `FailureScenario::from_worker_failure_kind()` bridge to recovery recipes
 9. Stale-branch detection before workspace tests — **done**: `stale_branch.rs` module with freshness detection, behind/ahead metrics, policy integration
 10. MCP structured degraded-startup reporting — **done**: `McpManager` degraded-startup reporting (+183 lines in `mcp_stdio.rs`), failed server classification (startup/handshake/config/partial), structured `failed_servers` + `recovery_recommendations` in tool output
@@ -315,7 +315,7 @@ Focus:
 - ready-for-prompt handshake
 - prompt misdelivery detection
 
-### Session B — clawhip lane events
+### Session B — lane events
 Focus:
 - canonical lane event schema
 - failure taxonomy
@@ -342,20 +342,20 @@ Focus:
 
 ## MVP Success Criteria
 
-We should consider claw-code materially more clawable when:
-- a claw can start a worker and know with certainty when it is ready
-- claws no longer accidentally type tasks into the shell
+We should consider rune materially more automatable when:
+- an agent can start a worker and know with certainty when it is ready
+- agents no longer accidentally type tasks into the shell
 - stale-branch failures are identified before they waste debugging time
-- clawhip reports machine states, not just tmux prose
+- the event router reports machine states, not just tmux prose
 - MCP/plugin startup failures are classified and surfaced cleanly
 - a coding lane can self-recover from common startup and branch issues without human babysitting
 
 ## Short Version
 
-claw-code should evolve from:
+rune should evolve from:
 - a CLI a human can also drive
 
 to:
-- a **claw-native execution runtime**
+- an **agent-native execution runtime**
 - an **event-native orchestration substrate**
 - a **plugin/hook-first autonomous coding harness**

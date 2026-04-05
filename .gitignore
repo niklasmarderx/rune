@@ -1,10 +1,10 @@
 __pycache__/
 archive/
 .omx/
-.clawd-agents/
+.rune-agents/
 # Claude Code local artifacts
-.claude/settings.local.json
-.claude/sessions/
+.rune/settings.local.json
+.rune/sessions/
 # Rune session artifacts
 .rune/sessions/
 # Claw legacy (migration)
