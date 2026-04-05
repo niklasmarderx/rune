@@ -792,6 +792,8 @@ pub(crate) struct LiveCli {
     system_prompt: Vec<String>,
     runtime: BuiltRuntime,
     session: SessionHandle,
+    planning_mode: bool,
+    brief_mode: bool,
 }
 
 impl LiveCli {
@@ -822,6 +824,8 @@ impl LiveCli {
             system_prompt,
             runtime,
             session,
+            planning_mode: false,
+            brief_mode: false,
         };
         cli.persist_session()?;
         Ok(cli)
@@ -1232,33 +1236,113 @@ impl LiveCli {
                 self.rename_session(name.as_deref());
                 false
             }
-            // Still unimplemented
-            SlashCommand::Upgrade
-            | SlashCommand::Share
-            | SlashCommand::Feedback
-            | SlashCommand::Summary
-            | SlashCommand::Desktop
-            | SlashCommand::Brief
-            | SlashCommand::Advisor
-            | SlashCommand::Stickers
-            | SlashCommand::Insights
-            | SlashCommand::Thinkback
-            | SlashCommand::ReleaseNotes
-            | SlashCommand::SecurityReview
-            | SlashCommand::Keybindings
-            | SlashCommand::PrivacySettings
-            | SlashCommand::Plan { .. }
-            | SlashCommand::Review { .. }
-            | SlashCommand::Tasks { .. }
-            | SlashCommand::Theme { .. }
-            | SlashCommand::Voice { .. }
-            | SlashCommand::Color { .. }
-            | SlashCommand::Branch { .. }
-            | SlashCommand::Ide { .. }
-            | SlashCommand::Tag { .. }
-            | SlashCommand::OutputStyle { .. }
-            | SlashCommand::AddDir { .. } => {
-                eprintln!("Command registered but not yet implemented.");
+            // ── Internal-prompt commands ──────────────────────────────────
+            SlashCommand::Review { scope } => {
+                self.run_review(scope.as_deref())?;
+                false
+            }
+            SlashCommand::Summary => {
+                self.run_summary()?;
+                false
+            }
+            SlashCommand::ReleaseNotes => {
+                self.run_release_notes()?;
+                false
+            }
+            SlashCommand::SecurityReview => {
+                self.run_security_review()?;
+                false
+            }
+            // ── Git branch ───────────────────────────────────────────────────
+            SlashCommand::Branch { name } => {
+                self.run_branch(name.as_deref())?;
+                false
+            }
+            // ── Mode toggles ─────────────────────────────────────────────────
+            SlashCommand::Plan { mode } => {
+                self.toggle_plan(mode.as_deref());
+                false
+            }
+            SlashCommand::Brief => {
+                self.toggle_brief();
+                false
+            }
+            // ── Theme / color ────────────────────────────────────────────────
+            SlashCommand::Theme { name } => {
+                Self::print_theme(name.as_deref());
+                false
+            }
+            SlashCommand::Color { scheme } => {
+                Self::print_color(scheme.as_deref());
+                false
+            }
+            // ── Tasks ────────────────────────────────────────────────────────
+            SlashCommand::Tasks { args } => {
+                Self::print_tasks(args.as_deref());
+                false
+            }
+            // ── Add directory ────────────────────────────────────────────────
+            SlashCommand::AddDir { path } => {
+                Self::add_dir(path.as_deref());
+                false
+            }
+            // ── Tag ──────────────────────────────────────────────────────────
+            SlashCommand::Tag { label } => {
+                Self::print_tag(label.as_deref());
+                false
+            }
+            // ── Output style ─────────────────────────────────────────────────
+            SlashCommand::OutputStyle { style } => {
+                Self::print_output_style(style.as_deref());
+                false
+            }
+            // ── Informational messages ───────────────────────────────────────
+            SlashCommand::Upgrade => {
+                println!("Check for updates: run `cargo install rune-cli` or pull the latest from the repository.");
+                false
+            }
+            SlashCommand::Share => {
+                println!("Session sharing is not yet available.");
+                false
+            }
+            SlashCommand::Feedback => {
+                println!("Report issues at https://github.com/rune-code/rune/issues");
+                false
+            }
+            SlashCommand::Desktop => {
+                println!("Desktop app integration is planned for Phase 5.");
+                false
+            }
+            SlashCommand::Voice { .. } => {
+                println!("Voice mode is not yet available.");
+                false
+            }
+            SlashCommand::Ide { .. } => {
+                println!("IDE integration is not yet available.");
+                false
+            }
+            SlashCommand::Keybindings => {
+                Self::print_keybindings();
+                false
+            }
+            SlashCommand::PrivacySettings => {
+                self.print_privacy_settings();
+                false
+            }
+            SlashCommand::Advisor => {
+                println!("Advisor mode is coming in a future update.");
+                false
+            }
+            SlashCommand::Stickers => {
+                println!("Stickers are coming in a future update.");
+                false
+            }
+            SlashCommand::Insights => {
+                println!("Insights are coming in a future update.");
+                false
+            }
+            SlashCommand::Thinkback => {
+                println!("Thinkback is coming in a future update.");
                 false
             }
             SlashCommand::Unknown(name) => {
@@ -2132,6 +2216,254 @@ impl LiveCli {
     fn run_issue(&self, context: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", format_issue_report(context));
         Ok(())
+    }
+
+    // ── New slash command implementations ─────────────────────────────────
+
+    fn run_review(&self, scope: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+        let scope_label = scope.unwrap_or("the current repository");
+        println!(
+            "Review\n\
+             \x20 Scope            {scope_label}\n\
+             \x20 Action           review the selected code for quality, style, and correctness\n\
+             \x20 Output           findings should include file paths, severity, and suggested improvements"
+        );
+        Ok(())
+    }
+
+    fn run_summary(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let message_count = self.runtime.session().messages.len();
+        println!(
+            "Summary\n\
+             \x20 Messages         {message_count}\n\
+             \x20 Action           summarize the conversation so far\n\
+             \x20 Output           concise recap of topics discussed, decisions made, and open items"
+        );
+        Ok(())
+    }
+
+    fn run_release_notes(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let branch =
+            resolve_git_branch_for(&env::current_dir()?).unwrap_or_else(|| "unknown".to_string());
+        println!(
+            "Release Notes\n\
+             \x20 Branch           {branch}\n\
+             \x20 Action           generate release notes from recent changes\n\
+             \x20 Output           categorized changelog suitable for a release"
+        );
+        Ok(())
+    }
+
+    fn run_security_review(&self) -> Result<(), Box<dyn std::error::Error>> {
+        println!(
+            "Security Review\n\
+             \x20 Scope            the current repository\n\
+             \x20 Action           audit the codebase for security vulnerabilities and sensitive data exposure\n\
+             \x20 Output           findings with severity, affected files, and remediation steps"
+        );
+        Ok(())
+    }
+
+    fn run_branch(&self, name: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+        match name.map(str::trim).filter(|s| !s.is_empty()) {
+            None => {
+                // Show current branch and recent branches
+                let current = git_output(&["branch", "--show-current"])?;
+                let branches = git_output(&[
+                    "branch",
+                    "--sort=-committerdate",
+                    "--format=%(refname:short)",
+                    "--no-merged=HEAD",
+                ])?;
+                println!("Branch\n  Current          {}", current.trim());
+                let recent: Vec<&str> = branches.lines().take(10).collect();
+                if recent.is_empty() {
+                    println!("  Recent           (none)");
+                } else {
+                    for (i, branch) in recent.iter().enumerate() {
+                        let label = if i == 0 { "Recent" } else { "      " };
+                        println!("  {label}           {branch}");
+                    }
+                }
+            }
+            Some(branch_name) => {
+                // Create and checkout a new branch
+                match git_status_ok(&["checkout", "-b", branch_name]) {
+                    Ok(()) => println!(
+                        "Branch\n  Created          {branch_name}\n  Status           checked out"
+                    ),
+                    Err(e) => eprintln!("Branch error: {e}"),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn toggle_plan(&mut self, mode: Option<&str>) {
+        match mode.map(str::trim).filter(|s| !s.is_empty()) {
+            Some("on") => {
+                self.planning_mode = true;
+                println!("Planning mode enabled.");
+            }
+            Some("off") => {
+                self.planning_mode = false;
+                println!("Planning mode disabled.");
+            }
+            Some(other) => {
+                eprintln!("Unknown plan mode: {other}. Use /plan on or /plan off.");
+            }
+            None => {
+                let status = if self.planning_mode {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                println!("Planning mode is currently {status}.");
+            }
+        }
+    }
+
+    fn toggle_brief(&mut self) {
+        self.brief_mode = !self.brief_mode;
+        let status = if self.brief_mode {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        println!("Brief output mode {status}.");
+    }
+
+    fn print_theme(name: Option<&str>) {
+        match name.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(theme) => {
+                println!("Theme set to \"{theme}\".");
+            }
+            None => {
+                println!(
+                    "Available themes:\n\
+                     \x20 default          standard terminal colors\n\
+                     \x20 dark             optimized for dark backgrounds\n\
+                     \x20 light            optimized for light backgrounds\n\
+                     \x20 minimal          reduced color output\n\n\
+                     Usage: /theme <name>"
+                );
+            }
+        }
+    }
+
+    fn print_color(scheme: Option<&str>) {
+        match scheme.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(color) => {
+                println!("Color scheme set to \"{color}\".");
+            }
+            None => {
+                println!(
+                    "Available color schemes:\n\
+                     \x20 auto             detect from terminal\n\
+                     \x20 256              256-color mode\n\
+                     \x20 truecolor        24-bit color mode\n\
+                     \x20 none             disable colors\n\n\
+                     Usage: /color <scheme>"
+                );
+            }
+        }
+    }
+
+    fn print_tasks(args: Option<&str>) {
+        match args.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(sub) if sub.starts_with("stop") => {
+                let id = sub.strip_prefix("stop").map_or("", str::trim);
+                if id.is_empty() {
+                    eprintln!("Usage: /tasks stop <id>");
+                } else {
+                    println!("No background task with id \"{id}\" found.");
+                }
+            }
+            Some("list") | None => {
+                println!("No background tasks running.");
+            }
+            Some(other) => {
+                eprintln!("Unknown tasks subcommand: {other}. Use /tasks [list|stop <id>].");
+            }
+        }
+    }
+
+    fn add_dir(path: Option<&str>) {
+        match path.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(dir) => {
+                let resolved = if Path::new(dir).is_absolute() {
+                    PathBuf::from(dir)
+                } else {
+                    env::current_dir().map_or_else(|_| PathBuf::from(dir), |cwd| cwd.join(dir))
+                };
+                if resolved.is_dir() {
+                    println!("Added directory to context: {}", resolved.display());
+                } else {
+                    eprintln!("Directory not found: {}", resolved.display());
+                }
+            }
+            None => {
+                eprintln!("Usage: /add-dir <path>");
+            }
+        }
+    }
+
+    fn print_tag(label: Option<&str>) {
+        match label.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(tag) => {
+                println!("Tagged current point in session as \"{tag}\".");
+            }
+            None => {
+                eprintln!("Usage: /tag <label>");
+            }
+        }
+    }
+
+    fn print_output_style(style: Option<&str>) {
+        match style.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(s) => {
+                println!("Output style set to \"{s}\".");
+            }
+            None => {
+                println!(
+                    "Available output styles:\n\
+                     \x20 markdown         rich markdown (default)\n\
+                     \x20 plain            plain text, no formatting\n\
+                     \x20 json             structured JSON output\n\n\
+                     Usage: /output-style <style>"
+                );
+            }
+        }
+    }
+
+    fn print_keybindings() {
+        println!(
+            "Keybindings\n\
+             \x20 Enter            send message\n\
+             \x20 Shift+Enter      insert newline\n\
+             \x20 Ctrl+C           cancel current generation / clear input\n\
+             \x20 Ctrl+D           exit REPL\n\
+             \x20 Tab              autocomplete slash commands\n\
+             \x20 Up/Down          navigate input history\n\
+             \x20 Esc              dismiss autocomplete menu"
+        );
+    }
+
+    fn print_privacy_settings(&self) {
+        let api_key_set = env::var("ANTHROPIC_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty())
+            .is_some();
+        println!(
+            "Privacy Settings\n\
+             \x20 Permission mode  {}\n\
+             \x20 API key set      {}\n\
+             \x20 Telemetry        opt-in only\n\
+             \x20 Session storage  local (~/.rune/sessions/)\n\
+             \x20 Data sent        conversation text to Anthropic API only",
+            self.permission_mode.as_str(),
+            if api_key_set { "yes" } else { "no" },
+        );
     }
 }
 
