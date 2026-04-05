@@ -181,20 +181,32 @@ impl McpToolRegistry {
 
                 runtime.block_on(async move {
                     let response = {
-                        let mut manager = manager
-                            .lock()
-                            .map_err(|_| "mcp server manager lock poisoned".to_string())?;
-                        manager
-                            .discover_tools()
-                            .await
-                            .map_err(|error| error.to_string())?;
-                        let response = manager
-                            .call_tool(&qualified_tool_name, arguments)
-                            .await
-                            .map_err(|error| error.to_string());
-                        let shutdown = manager.shutdown().await.map_err(|error| error.to_string());
+                        // Lock, discover, and unlock before the tool call to avoid
+                        // holding a MutexGuard across await points.
+                        {
+                            let mut mgr = manager
+                                .lock()
+                                .map_err(|_| "mcp server manager lock poisoned".to_string())?;
+                            mgr.discover_tools()
+                                .await
+                                .map_err(|error| error.to_string())?;
+                        }
+                        let call_result = {
+                            let mut mgr = manager
+                                .lock()
+                                .map_err(|_| "mcp server manager lock poisoned".to_string())?;
+                            mgr.call_tool(&qualified_tool_name, arguments)
+                                .await
+                                .map_err(|error| error.to_string())
+                        };
+                        let shutdown_result = {
+                            let mut mgr = manager
+                                .lock()
+                                .map_err(|_| "mcp server manager lock poisoned".to_string())?;
+                            mgr.shutdown().await.map_err(|error| error.to_string())
+                        };
 
-                        match (response, shutdown) {
+                        match (call_result, shutdown_result) {
                             (Ok(response), Ok(())) => Ok(response),
                             (Err(error), Ok(())) | (Err(error), Err(_)) => Err(error),
                             (Ok(_), Err(error)) => Err(error),

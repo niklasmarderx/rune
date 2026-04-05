@@ -11,18 +11,19 @@ use api::{
 use plugins::PluginTool;
 use reqwest::blocking::Client;
 use runtime::{
-    check_freshness, edit_file, execute_bash, glob_search, grep_search, load_system_prompt,
+    check_freshness, edit_file, edit_file_in_workspace, execute_bash, glob_search, grep_search,
+    load_system_prompt,
     lsp_client::LspRegistry,
     mcp_tool_bridge::McpToolRegistry,
     permission_enforcer::{EnforcementResult, PermissionEnforcer},
-    read_file,
+    read_file, read_file_in_workspace,
     summary_compression::compress_summary_text,
     task_registry::TaskRegistry,
     team_cron_registry::{CronRegistry, TeamRegistry},
     worker_boot::{WorkerReadySnapshot, WorkerRegistry},
-    write_file, ApiClient, ApiRequest, AssistantEvent, BashCommandInput, BashCommandOutput,
-    BranchFreshness, ContentBlock, ConversationMessage, ConversationRuntime, GrepSearchInput,
-    LaneEvent, LaneEventBlocker, LaneEventName, LaneEventStatus, LaneFailureClass,
+    write_file, write_file_in_workspace, ApiClient, ApiRequest, AssistantEvent, BashCommandInput,
+    BashCommandOutput, BranchFreshness, ContentBlock, ConversationMessage, ConversationRuntime,
+    GrepSearchInput, LaneEvent, LaneEventBlocker, LaneEventName, LaneEventStatus, LaneFailureClass,
     McpDegradedReport, MessageRole, PermissionMode, PermissionPolicy, PromptCacheEvent,
     RuntimeError, Session, TaskPacket, ToolError, ToolExecutor,
 };
@@ -1904,22 +1905,31 @@ fn branch_divergence_output(
 
 #[allow(clippy::needless_pass_by_value)]
 fn run_read_file(input: ReadFileInput) -> Result<String, String> {
-    to_pretty_json(read_file(&input.path, input.offset, input.limit).map_err(io_to_string)?)
+    let workspace = std::env::current_dir().map_err(|e| e.to_string())?;
+    to_pretty_json(
+        read_file_in_workspace(&input.path, input.offset, input.limit, &workspace)
+            .map_err(io_to_string)?,
+    )
 }
 
 #[allow(clippy::needless_pass_by_value)]
 fn run_write_file(input: WriteFileInput) -> Result<String, String> {
-    to_pretty_json(write_file(&input.path, &input.content).map_err(io_to_string)?)
+    let workspace = std::env::current_dir().map_err(|e| e.to_string())?;
+    to_pretty_json(
+        write_file_in_workspace(&input.path, &input.content, &workspace).map_err(io_to_string)?,
+    )
 }
 
 #[allow(clippy::needless_pass_by_value)]
 fn run_edit_file(input: EditFileInput) -> Result<String, String> {
+    let workspace = std::env::current_dir().map_err(|e| e.to_string())?;
     to_pretty_json(
-        edit_file(
+        edit_file_in_workspace(
             &input.path,
             &input.old_string,
             &input.new_string,
             input.replace_all.unwrap_or(false),
+            &workspace,
         )
         .map_err(io_to_string)?,
     )
