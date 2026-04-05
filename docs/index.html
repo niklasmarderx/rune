@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rune Code — Autonomous Coding Harness</title>
+    <meta name="description" content="A high-performance, open-source autonomous coding harness built in Rust. 9 crates. ~20K lines. Claw-native.">
+    <meta name="theme-color" content="#0b0b0f">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ᚱ</text></svg>">
+</head>
+<body>
+
+    <nav class="nav" id="nav">
+        <div class="nav-inner container">
+            <a href="#" class="nav-logo">ᚱ rune</a>
+            <div class="nav-links" id="navLinks">
+                <a href="#features">Features</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#start">Get Started</a>
+                <a href="https://github.com/niklasmarderx/rune" target="_blank" rel="noopener">GitHub ↗</a>
+            </div>
+            <button class="nav-toggle" id="navToggle" aria-label="Menu">
+                <span></span><span></span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero — minimal, left-aligned -->
+    <header class="hero">
+        <div class="container">
+            <div class="hero-inner">
+                <div class="hero-text">
+                    <p class="hero-tag">Open source · Rust · 9 crates</p>
+                    <h1>Autonomous coding harness,<br>built for machines.</h1>
+                    <p class="hero-desc">
+                        Rune Code is a CLI agent runtime where humans set direction 
+                        and claws execute. Streaming API, native tools, session persistence, 
+                        sub-agent orchestration — all in ~20K lines of Rust.
+                    </p>
+                    <div class="hero-actions">
+                        <a href="#start" class="btn-primary">Get Started</a>
+                        <a href="https://github.com/niklasmarderx/rune" target="_blank" rel="noopener" class="btn-ghost">View Source</a>
+                    </div>
+                </div>
+                <div class="hero-terminal">
+                    <div class="term">
+                        <div class="term-bar">
+                            <span class="term-dots"><i></i><i></i><i></i></span>
+                            <span class="term-title">rune</span>
+                        </div>
+                        <div class="term-body" id="termBody">
+                            <div class="term-line"><span class="term-ps">$</span> <span id="termCmd"></span><span class="term-caret"></span></div>
+                            <div id="termOut" class="term-output"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Numbers strip -->
+    <div class="strip">
+        <div class="container strip-inner">
+            <div class="strip-item"><strong>~20K</strong> lines of Rust</div>
+            <div class="strip-item"><strong>9</strong> workspace crates</div>
+            <div class="strip-item"><strong>16</strong> built-in tools</div>
+            <div class="strip-item"><strong>3</strong> permission modes</div>
+        </div>
+    </div>
+
+    <!-- Features -->
+    <section class="section" id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>What's inside</h2>
+                <p>Everything needed for autonomous coding agent workflows, from API streaming to sub-agent orchestration.</p>
+            </div>
+
+            <div class="features">
+                <div class="feat feat-wide">
+                    <div class="feat-label">Core</div>
+                    <h3>Anthropic API with native streaming</h3>
+                    <p>SSE streaming against the Messages API. Real-time token delivery, backpressure handling, extended thinking blocks, and cost tracking per session. Supports API keys and OAuth.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-label">Runtime</div>
+                    <h3>Interactive REPL</h3>
+                    <p>Rustyline-powered REPL with tab completion, slash commands, model aliases, session resume, and markdown rendering in the terminal.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-label">Runtime</div>
+                    <h3>Session persistence</h3>
+                    <p>Every conversation is persisted to disk. Resume sessions exactly where you left off, with full history and context.</p>
+                </div>
+                <div class="feat feat-wide">
+                    <div class="feat-label">Tools</div>
+                    <h3>16 built-in tools — extensible</h3>
+                    <p>Bash, ReadFile, WriteFile, EditFile, GlobSearch, GrepSearch, WebSearch, WebFetch, Agent (sub-agent spawning), and more. Each tool is permission-aware with three enforcement modes: read-only, workspace-write, and full-access.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-label">Orchestration</div>
+                    <h3>Sub-agent spawning</h3>
+                    <p>Spawn child agents for parallel work. Structured handoffs, disagreement resolution, and verification loops between agents.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-label">Protocol</div>
+                    <h3>MCP server lifecycle</h3>
+                    <p>Full Model Context Protocol support. Config validation, startup healthcheck, degraded-mode reporting, structured failure classification.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-label">Config</div>
+                    <h3>Layered configuration</h3>
+                    <p>Global → project-local config hierarchy with deep-merge, validation, and hook support. Includes PreToolUse and PostToolUse hooks.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-label">VCS</div>
+                    <h3>Git-aware</h3>
+                    <p>Native diff rendering, branch detection, worktree support, and stale-branch detection baked into the runtime.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="section section-alt" id="architecture">
+        <div class="container">
+            <div class="section-header">
+                <h2>Architecture</h2>
+                <p>Nine focused crates. Each with one job.</p>
+            </div>
+
+            <div class="crates">
+                <div class="crate crate-primary">
+                    <code>rusty-claude-cli</code>
+                    <span class="crate-tag">binary</span>
+                    <p>Main entry point. REPL, one-shot prompt, streaming display, argument parsing.</p>
+                </div>
+                <div class="crate">
+                    <code>api</code>
+                    <span class="crate-tag">lib</span>
+                    <p>HTTP client, SSE stream parser, request/response types, auth.</p>
+                </div>
+                <div class="crate">
+                    <code>runtime</code>
+                    <span class="crate-tag">lib</span>
+                    <p>Conversation loop, config loader, session store, permission policy, MCP client, system prompt assembly.</p>
+                </div>
+                <div class="crate">
+                    <code>tools</code>
+                    <span class="crate-tag">lib</span>
+                    <p>Bash, ReadFile, WriteFile, EditFile, GlobSearch, GrepSearch, WebSearch, WebFetch, Agent.</p>
+                </div>
+                <div class="crate">
+                    <code>commands</code>
+                    <span class="crate-tag">lib</span>
+                    <p>Slash command definitions and help text for the REPL.</p>
+                </div>
+                <div class="crate">
+                    <code>plugins</code>
+                    <span class="crate-tag">lib</span>
+                    <p>Plugin metadata, registries, and hook surfaces.</p>
+                </div>
+                <div class="crate">
+                    <code>telemetry</code>
+                    <span class="crate-tag">lib</span>
+                    <p>Session trace events and telemetry payloads.</p>
+                </div>
+                <div class="crate">
+                    <code>compat-harness</code>
+                    <span class="crate-tag">test</span>
+                    <p>Extracts upstream TypeScript manifests for parity verification.</p>
+                </div>
+                <div class="crate">
+                    <code>mock-anthropic-service</code>
+                    <span class="crate-tag">test</span>
+                    <p>Deterministic local mock for CLI parity tests.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Philosophy — single quote, no cards -->
+    <section class="section">
+        <div class="container">
+            <div class="philosophy">
+                <blockquote>
+                    "Humans set direction. Claws coordinate, build, test, recover, and push. 
+                    The repository is the artifact. The system behind it is the product."
+                </blockquote>
+                <p>
+                    Rune Code is not just a tool for humans — it's an execution runtime designed to 
+                    be driven by autonomous agents. The project was built in public, coordinated 
+                    by claws, and continuously improved through structured planning, execution, and 
+                    review loops. The bottleneck is no longer typing speed. When agent systems 
+                    can rebuild a codebase in hours, the scarce resource becomes architectural 
+                    clarity, task decomposition, and conviction about what is worth building.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Roadmap — compact -->
+    <section class="section section-alt" id="roadmap">
+        <div class="container">
+            <div class="section-header">
+                <h2>Roadmap</h2>
+            </div>
+            <div class="roadmap">
+                <div class="rm rm-done"><span class="rm-dot"></span><div><strong>Phase 1</strong> Reliable worker boot — lifecycle handshake, trust prompt resolver, session control API.</div></div>
+                <div class="rm rm-done"><span class="rm-dot"></span><div><strong>Phase 2</strong> Event-native integration — canonical lane events, failure taxonomy, summary compression.</div></div>
+                <div class="rm rm-active"><span class="rm-dot"></span><div><strong>Phase 3</strong> Branch/test awareness — stale-branch detection, recovery recipes, green-ness contracts.</div></div>
+                <div class="rm"><span class="rm-dot"></span><div><strong>Phase 4</strong> Claw-first task execution — typed task packets, policy engine, claw-native dashboards.</div></div>
+                <div class="rm"><span class="rm-dot"></span><div><strong>Phase 5</strong> Plugin &amp; MCP lifecycle — first-class lifecycle contracts, end-to-end parity.</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section class="section" id="start">
+        <div class="container">
+            <div class="section-header">
+                <h2>Get started</h2>
+            </div>
+            <div class="start-grid">
+                <div class="start-steps">
+                    <div class="start-step">
+                        <div class="start-n">1</div>
+                        <div>
+                            <div class="code-inline">git clone https://github.com/niklasmarderx/rune.git && cd rune/rust</div>
+                        </div>
+                    </div>
+                    <div class="start-step">
+                        <div class="start-n">2</div>
+                        <div>
+                            <div class="code-inline">cargo build --workspace</div>
+                        </div>
+                    </div>
+                    <div class="start-step">
+                        <div class="start-n">3</div>
+                        <div>
+                            <div class="code-inline">export ANTHROPIC_API_KEY="sk-ant-..."</div>
+                        </div>
+                    </div>
+                    <div class="start-step">
+                        <div class="start-n">4</div>
+                        <div>
+                            <div class="code-inline">./target/debug/rune</div>
+                            <p class="start-hint">Or one-shot: <code>rune prompt "explain this codebase"</code></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="start-aside">
+                    <h3>Links</h3>
+                    <ul>
+                        <li><a href="https://github.com/niklasmarderx/rune" target="_blank" rel="noopener">GitHub Repository</a></li>
+                        <li><a href="https://github.com/niklasmarderx/rune/blob/main/USAGE.md" target="_blank" rel="noopener">Usage Guide</a></li>
+                        <li><a href="https://github.com/niklasmarderx/rune/blob/main/PHILOSOPHY.md" target="_blank" rel="noopener">Philosophy</a></li>
+                        <li><a href="https://github.com/niklasmarderx/rune/blob/main/ROADMAP.md" target="_blank" rel="noopener">Roadmap</a></li>
+                        <li><a href="https://discord.gg/6ztZB9jvWq" target="_blank" rel="noopener">Discord (UltraWorkers)</a></li>
+                    </ul>
+                    <h3>Ecosystem</h3>
+                    <ul>
+                        <li><a href="https://github.com/Yeachan-Heo/clawhip" target="_blank" rel="noopener">clawhip</a> — event router</li>
+                        <li><a href="https://github.com/Yeachan-Heo/oh-my-codex" target="_blank" rel="noopener">oh-my-codex</a> — workflow layer</li>
+                        <li><a href="https://github.com/code-yeongyu/oh-my-openagent" target="_blank" rel="noopener">oh-my-openagent</a> — multi-agent coord</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container footer-inner">
+            <span class="footer-brand">ᚱ rune code</span>
+            <span class="footer-note">Open source. Built autonomously.</span>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
