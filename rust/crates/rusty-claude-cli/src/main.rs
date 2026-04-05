@@ -2132,7 +2132,7 @@ impl LiveCli {
 ██████╔╝██║   ██║██╔██╗ ██║█████╗  \n\
 ██╔══██╗██║   ██║██║╚██╗██║██╔══╝  \n\
 ██║  ██║╚██████╔╝██║ ╚████║███████╗\n\
-╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝\x1b[0m \x1b[38;5;141mCode\x1b[0m ᚱ\n\n\
+╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝\x1b[0m \x1b[38;5;141mCode\x1b[0m\n\n\
   \x1b[2mModel\x1b[0m            {}\n\
   \x1b[2mPermissions\x1b[0m      {}\n\
   \x1b[2mBranch\x1b[0m           {}\n\
@@ -2199,18 +2199,18 @@ impl LiveCli {
         let stop_flag = stop_spinner.clone();
         let spinner_handle = std::thread::spawn(move || {
             const THINKING_MESSAGES: &[&str] = &[
-                "ᚱ Thinking...",
-                "ᚱ Pondering the runes...",
-                "ᚱ Casting spells...",
-                "ᚱ Consulting the oracle...",
-                "ᚱ Weaving patterns...",
-                "ᚱ Channeling wisdom...",
-                "ᚱ Deciphering symbols...",
-                "ᚱ Forging a response...",
-                "ᚱ Tracing pathways...",
-                "ᚱ Summoning insight...",
-                "ᚱ Reading the stones...",
-                "ᚱ Aligning the stars...",
+                "Thinking...",
+                "Pondering...",
+                "Processing...",
+                "Analyzing...",
+                "Weaving patterns...",
+                "Channeling wisdom...",
+                "Deciphering...",
+                "Forging a response...",
+                "Tracing pathways...",
+                "Reasoning...",
+                "Connecting dots...",
+                "Synthesizing...",
             ];
 
             let mut spinner = Spinner::new();
