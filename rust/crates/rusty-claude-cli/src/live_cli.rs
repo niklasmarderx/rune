@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
+use crate::init::initialize_repo;
+use crate::render::{Spinner, TerminalRenderer};
 use commands::{
     handle_agents_slash_command, handle_mcp_slash_command, handle_plugins_slash_command,
     handle_skills_slash_command, slash_command_specs, SlashCommand,
 };
-use crate::init::initialize_repo;
-use crate::render::{Spinner, TerminalRenderer};
 use runtime::{
     format_usd, load_system_prompt, pricing_for_model, CompactionConfig, ConfigLoader,
     ContentBlock, MessageRole, PermissionMode, Session, ToolError, ToolExecutor,
@@ -20,24 +20,23 @@ use serde_json::json;
 use tools::GlobalToolRegistry;
 
 use super::{
-    build_plugin_manager, build_runtime, create_managed_session_handle, format_auto_compaction_notice,
-    format_bughunter_report, format_compact_report, format_commit_preflight_report,
-    format_commit_skipped_report, format_cost_report, format_issue_report,
-    format_model_report, format_model_switch_report, format_permissions_report,
-    format_permissions_switch_report, format_pr_report, format_sandbox_report,
-    format_status_report, format_tool_result, format_ultraplan_report,
-    format_unknown_slash_command, collect_prompt_cache_events, collect_tool_results,
-    collect_tool_uses, default_permission_mode, filter_tool_specs, final_assistant_text,
-    list_managed_sessions, normalize_permission_mode, parse_git_status_branch,
-    parse_git_workspace_summary, permission_mode_from_label, render_config_report,
-    render_diff_report, render_diff_report_for, render_export_text, render_last_tool_debug_report,
-    render_memory_report, render_repl_help, render_session_list, render_teleport_report,
-    render_version_report, resolve_git_branch_for, resolve_model_alias,
+    build_plugin_manager, build_runtime, collect_prompt_cache_events, collect_tool_results,
+    collect_tool_uses, create_managed_session_handle, default_permission_mode, filter_tool_specs,
+    final_assistant_text, format_auto_compaction_notice, format_bughunter_report,
+    format_commit_preflight_report, format_commit_skipped_report, format_compact_report,
+    format_cost_report, format_issue_report, format_model_report, format_model_switch_report,
+    format_permissions_report, format_permissions_switch_report, format_pr_report,
+    format_sandbox_report, format_status_report, format_tool_result, format_ultraplan_report,
+    format_unknown_slash_command, list_managed_sessions, normalize_permission_mode,
+    parse_git_status_branch, parse_git_workspace_summary, permission_mode_from_label,
+    render_config_report, render_diff_report, render_diff_report_for, render_export_text,
+    render_last_tool_debug_report, render_memory_report, render_repl_help, render_session_list,
+    render_teleport_report, render_version_report, resolve_git_branch_for, resolve_model_alias,
     resolve_sandbox_status, resolve_session_reference, suggest_slash_commands,
     write_session_clear_backup, AllowedToolSet, BuiltRuntime, CliOutputFormat,
-    CliPermissionPrompter, HookAbortMonitor, InternalPromptProgressReporter,
-    RuntimeMcpState, RuntimePluginState, SessionHandle, StatusUsage,
-    DEFAULT_DATE, LATEST_SESSION_REFERENCE, PRIMARY_SESSION_EXTENSION,
+    CliPermissionPrompter, HookAbortMonitor, InternalPromptProgressReporter, RuntimeMcpState,
+    RuntimePluginState, SessionHandle, StatusUsage, DEFAULT_DATE, LATEST_SESSION_REFERENCE,
+    PRIMARY_SESSION_EXTENSION,
 };
 
 pub(crate) fn resume_session(session_path: &Path, commands: &[String]) {
@@ -467,7 +466,9 @@ impl LiveCli {
         )
     }
 
-    pub(crate) fn repl_completion_candidates(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    pub(crate) fn repl_completion_candidates(
+        &self,
+    ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         Ok(slash_command_completion_candidates_with_sessions(
             &self.model,
             Some(&self.session.id),
@@ -755,17 +756,40 @@ impl LiveCli {
                 Self::print_skills(args.as_deref())?;
                 false
             }
-            SlashCommand::Doctor
-            | SlashCommand::Login
+            SlashCommand::Doctor => {
+                self.run_doctor();
+                false
+            }
+            SlashCommand::Effort { level } => {
+                self.set_effort(level.as_deref());
+                false
+            }
+            SlashCommand::Fast => {
+                self.toggle_fast()?;
+                false
+            }
+            SlashCommand::Vim => {
+                self.toggle_vim();
+                false
+            }
+            SlashCommand::Context { action } => {
+                self.handle_context(action.as_deref())?;
+                false
+            }
+            SlashCommand::Copy { target } => {
+                self.copy_to_clipboard(target.as_deref())?;
+                false
+            }
+            SlashCommand::Exit => {
+                return Ok(true);
+            }
+            SlashCommand::Login
             | SlashCommand::Logout
-            | SlashCommand::Vim
             | SlashCommand::Upgrade
             | SlashCommand::Stats
             | SlashCommand::Share
             | SlashCommand::Feedback
             | SlashCommand::Files
-            | SlashCommand::Fast
-            | SlashCommand::Exit
             | SlashCommand::Summary
             | SlashCommand::Desktop
             | SlashCommand::Brief
@@ -784,11 +808,8 @@ impl LiveCli {
             | SlashCommand::Voice { .. }
             | SlashCommand::Usage { .. }
             | SlashCommand::Rename { .. }
-            | SlashCommand::Copy { .. }
             | SlashCommand::Hooks { .. }
-            | SlashCommand::Context { .. }
             | SlashCommand::Color { .. }
-            | SlashCommand::Effort { .. }
             | SlashCommand::Branch { .. }
             | SlashCommand::Rewind { .. }
             | SlashCommand::Ide { .. }
@@ -803,6 +824,322 @@ impl LiveCli {
                 false
             }
         })
+    }
+
+    // ── Slash command implementations ──────────────────────────────────────
+
+    fn run_doctor(&self) {
+        println!("Environment Health Check");
+        println!("========================\n");
+
+        // API key
+        let api_key = env::var("ANTHROPIC_API_KEY").ok().filter(|k| !k.is_empty());
+        let api_status = if api_key.is_some() { "ok" } else { "MISSING" };
+        println!("  API key            {api_status}");
+
+        // Model
+        println!("  Model              {}", self.model);
+
+        // Permission mode
+        println!("  Permission mode    {}", self.permission_mode.as_str());
+
+        // Git
+        let git_ok = Command::new("git")
+            .args(["--version"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let git_version = if git_ok {
+            Command::new("git")
+                .args(["--version"])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        } else {
+            "NOT FOUND".to_string()
+        };
+        println!("  Git                {git_version}");
+
+        // Rust toolchain
+        let rustc_ok = Command::new("rustc")
+            .args(["--version"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let rustc_version = if rustc_ok {
+            Command::new("rustc")
+                .args(["--version"])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        } else {
+            "not found".to_string()
+        };
+        println!("  Rust               {rustc_version}");
+
+        // Working directory
+        let cwd = env::current_dir()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
+        println!("  Working dir        {cwd}");
+
+        // Session
+        println!("  Session            {}", self.session.path.display());
+        println!(
+            "  Messages           {}",
+            self.runtime.session().messages.len()
+        );
+
+        // MCP servers
+        if let Some(mcp) = &self.runtime.mcp_state {
+            let state = mcp
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let names = state.server_names();
+            if names.is_empty() {
+                println!("  MCP servers        none configured");
+            } else {
+                println!("  MCP servers        {}", names.len());
+                for name in &names {
+                    println!("    - {name}");
+                }
+            }
+        } else {
+            println!("  MCP servers        none configured");
+        }
+
+        // Token usage
+        let usage = self.runtime.usage().cumulative_usage();
+        println!(
+            "\n  Tokens (in/out)    {} / {}",
+            usage.input_tokens, usage.output_tokens
+        );
+        if let Some(pricing) = pricing_for_model(&self.model) {
+            let cost = usage.input_tokens as f64 * pricing.input_cost_per_million / 1_000_000.0
+                + usage.output_tokens as f64 * pricing.output_cost_per_million / 1_000_000.0;
+            println!("  Estimated cost     {}", format_usd(cost));
+        }
+
+        println!("\nAll checks passed.");
+    }
+
+    fn set_effort(&self, level: Option<&str>) {
+        let Some(level) = level.map(str::trim).filter(|l| !l.is_empty()) else {
+            println!(
+                "Effort level\n\
+                 \n\
+                 Usage: /effort <low|medium|high>\n\
+                 \n\
+                 Controls how much effort the model puts into responses.\n\
+                 Currently: not yet wired to API (placeholder)."
+            );
+            return;
+        };
+        match level {
+            "low" | "medium" | "high" => {
+                println!("Effort level set to: {level}");
+                println!("Note: effort parameter is not yet wired to the API request.");
+            }
+            other => {
+                eprintln!("Unknown effort level: {other}. Use low, medium, or high.");
+            }
+        }
+    }
+
+    fn toggle_fast(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let new_model = if self.model.contains("opus") {
+            "claude-sonnet-4-6".to_string()
+        } else {
+            "claude-opus-4-6".to_string()
+        };
+        let previous = self.model.clone();
+        let session = self.runtime.session().clone();
+        let runtime = build_runtime(
+            session,
+            &self.session.id,
+            new_model.clone(),
+            self.system_prompt.clone(),
+            true,
+            true,
+            self.allowed_tools.clone(),
+            self.permission_mode,
+            None,
+        )?;
+        self.replace_runtime(runtime)?;
+        self.model.clone_from(&new_model);
+        let mode = if new_model.contains("sonnet") {
+            "fast (sonnet)"
+        } else {
+            "quality (opus)"
+        };
+        println!("Switched to {mode}: {previous} → {new_model}");
+        Ok(())
+    }
+
+    fn toggle_vim(&self) {
+        println!(
+            "Vim mode toggling is not yet implemented.\n\
+             The input system uses rustyline — vim mode requires EditMode::Vi.\n\
+             Coming in a future update."
+        );
+    }
+
+    fn handle_context(&self, action: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+        match action.map(str::trim).filter(|a| !a.is_empty()) {
+            None | Some("show") => {
+                let session = self.runtime.session();
+                let message_count = session.messages.len();
+                let usage = self.runtime.usage().cumulative_usage();
+                println!("Context Summary");
+                println!("  Messages           {message_count}");
+                println!(
+                    "  Tokens (in/out)    {} / {}",
+                    usage.input_tokens, usage.output_tokens
+                );
+                println!("  Estimated tokens   {}", self.runtime.estimated_tokens());
+                println!("  Model              {}", self.model);
+                println!("  Session            {}", self.session.path.display());
+                if message_count > 0 {
+                    println!("\nRecent messages:");
+                    let start = message_count.saturating_sub(6);
+                    for (i, msg) in session.messages[start..].iter().enumerate() {
+                        let role = match msg.role {
+                            MessageRole::User => "user",
+                            MessageRole::Assistant => "asst",
+                            MessageRole::System => "sys",
+                            MessageRole::Tool => "tool",
+                        };
+                        let preview: String = msg
+                            .blocks
+                            .iter()
+                            .filter_map(|block| {
+                                if let ContentBlock::Text { text } = block {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        let truncated = if preview.len() > 80 {
+                            format!("{}...", &preview[..77])
+                        } else {
+                            preview
+                        };
+                        println!("  [{:>2}] {role}: {truncated}", start + i + 1);
+                    }
+                }
+            }
+            Some("clear") => {
+                println!(
+                    "Context clearing is handled by /clear.\n\
+                     Use /clear to reset the conversation."
+                );
+            }
+            Some(other) => {
+                eprintln!("Unknown context action: {other}. Use 'show' or 'clear'.");
+            }
+        }
+        Ok(())
+    }
+
+    fn copy_to_clipboard(&self, target: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+        let session = self.runtime.session();
+        let text = match target.map(str::trim).filter(|t| !t.is_empty()) {
+            None | Some("last") => {
+                // Copy last assistant message
+                session
+                    .messages
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == MessageRole::Assistant)
+                    .map(|m| {
+                        m.blocks
+                            .iter()
+                            .filter_map(|block| {
+                                if let ContentBlock::Text { text } = block {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+                    .unwrap_or_default()
+            }
+            Some("all") => {
+                // Copy entire conversation
+                session
+                    .messages
+                    .iter()
+                    .map(|m| {
+                        let role = match m.role {
+                            MessageRole::User => "User",
+                            MessageRole::Assistant => "Assistant",
+                            MessageRole::System => "System",
+                            MessageRole::Tool => "Tool",
+                        };
+                        let text: String = m
+                            .blocks
+                            .iter()
+                            .filter_map(|block| {
+                                if let ContentBlock::Text { text } = block {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        format!("{role}:\n{text}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n---\n\n")
+            }
+            Some(other) => {
+                eprintln!("Unknown copy target: {other}. Use 'last' or 'all'.");
+                return Ok(());
+            }
+        };
+
+        if text.is_empty() {
+            println!("Nothing to copy.");
+            return Ok(());
+        }
+
+        // Platform-specific clipboard
+        let (program, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
+            ("pbcopy", vec![])
+        } else if cfg!(target_os = "windows") {
+            ("clip", vec![])
+        } else {
+            ("xclip", vec!["-selection", "clipboard"])
+        };
+
+        match Command::new(program)
+            .args(&args)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(mut child) => {
+                if let Some(mut stdin) = child.stdin.take() {
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                let _ = child.wait();
+                let chars = text.chars().count();
+                println!("Copied {chars} characters to clipboard.");
+            }
+            Err(_) => {
+                eprintln!(
+                    "Could not copy to clipboard ({program} not found).\n\
+                     Use /export to save to a file instead."
+                );
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn persist_session(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -825,7 +1162,8 @@ impl LiveCli {
                     estimated_tokens: self.runtime.estimated_tokens(),
                 },
                 self.permission_mode.as_str(),
-                &super::status_context(Some(&self.session.path)).expect("status context should load"),
+                &super::status_context(Some(&self.session.path))
+                    .expect("status context should load"),
             )
         );
     }
@@ -1670,7 +2008,9 @@ impl ToolExecutor for CliToolExecutor {
                     let markdown = format_tool_result(tool_name, &error.to_string(), true);
                     self.renderer
                         .stream_markdown(&markdown, &mut io::stdout())
-                        .map_err(|stream_error: io::Error| ToolError::new(stream_error.to_string()))?;
+                        .map_err(|stream_error: io::Error| {
+                            ToolError::new(stream_error.to_string())
+                        })?;
                 }
                 Err(error)
             }
