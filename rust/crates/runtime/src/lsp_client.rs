@@ -19,7 +19,8 @@ pub enum LspAction {
 }
 
 impl LspAction {
-    pub fn from_str(s: &str) -> Option<Self> {
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "diagnostics" => Some(Self::Diagnostics),
             "hover" => Some(Self::Hover),
@@ -141,12 +142,14 @@ impl LspRegistry {
         );
     }
 
+    #[must_use]
     pub fn get(&self, language: &str) -> Option<LspServerState> {
         let inner = self.inner.lock().expect("lsp registry lock poisoned");
         inner.servers.get(language).cloned()
     }
 
     /// Find the appropriate server for a file path based on extension.
+    #[must_use]
     pub fn find_server_for_path(&self, path: &str) -> Option<LspServerState> {
         let ext = std::path::Path::new(path)
             .extension()
@@ -171,6 +174,7 @@ impl LspRegistry {
     }
 
     /// List all registered servers.
+    #[must_use]
     pub fn list_servers(&self) -> Vec<LspServerState> {
         let inner = self.inner.lock().expect("lsp registry lock poisoned");
         inner.servers.values().cloned().collect()
@@ -192,6 +196,7 @@ impl LspRegistry {
     }
 
     /// Get diagnostics for a specific file path.
+    #[must_use]
     pub fn get_diagnostics(&self, path: &str) -> Vec<LspDiagnostic> {
         let inner = self.inner.lock().expect("lsp registry lock poisoned");
         inner
@@ -215,6 +220,7 @@ impl LspRegistry {
     }
 
     /// Disconnect a server.
+    #[must_use]
     pub fn disconnect(&self, language: &str) -> Option<LspServerState> {
         let mut inner = self.inner.lock().expect("lsp registry lock poisoned");
         inner.servers.remove(language)
@@ -241,7 +247,7 @@ impl LspRegistry {
         _query: Option<&str>,
     ) -> Result<serde_json::Value, String> {
         let lsp_action =
-            LspAction::from_str(action).ok_or_else(|| format!("unknown LSP action: {action}"))?;
+            LspAction::parse(action).ok_or_else(|| format!("unknown LSP action: {action}"))?;
 
         // For diagnostics, we can check existing cached diagnostics
         if lsp_action == LspAction::Diagnostics {
@@ -444,7 +450,7 @@ mod tests {
         // when
         let resolved: Vec<_> = cases
             .into_iter()
-            .map(|(input, expected)| (input, LspAction::from_str(input), expected))
+            .map(|(input, expected)| (input, LspAction::parse(input), expected))
             .collect();
 
         // then

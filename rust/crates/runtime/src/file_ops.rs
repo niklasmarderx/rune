@@ -602,6 +602,7 @@ pub fn edit_file_in_workspace(
 }
 
 /// Check whether a path is a symlink that resolves outside the workspace.
+#[allow(dead_code)]
 pub fn is_symlink_escape(path: &Path, workspace_root: &Path) -> io::Result<bool> {
     let metadata = fs::symlink_metadata(path)?;
     if !metadata.is_symlink() {

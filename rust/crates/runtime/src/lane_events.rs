@@ -230,12 +230,12 @@ mod tests {
             detail: "broken server".to_string(),
         };
 
-        let blocked = LaneEvent::blocked("2026-04-04T00:00:00Z", &blocker);
+        let blocked_event = LaneEvent::blocked("2026-04-04T00:00:00Z", &blocker);
         let failed = LaneEvent::failed("2026-04-04T00:00:01Z", &blocker);
 
-        assert_eq!(blocked.event, LaneEventName::Blocked);
-        assert_eq!(blocked.status, LaneEventStatus::Blocked);
-        assert_eq!(blocked.failure_class, Some(LaneFailureClass::McpStartup));
+        assert_eq!(blocked_event.event, LaneEventName::Blocked);
+        assert_eq!(blocked_event.status, LaneEventStatus::Blocked);
+        assert_eq!(blocked_event.failure_class, Some(LaneFailureClass::McpStartup));
         assert_eq!(failed.event, LaneEventName::Failed);
         assert_eq!(failed.status, LaneEventStatus::Failed);
         assert_eq!(failed.detail.as_deref(), Some("broken server"));
