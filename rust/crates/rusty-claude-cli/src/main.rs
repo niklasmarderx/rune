@@ -162,7 +162,6 @@ fn print_version() {
     println!("{}", render_version_report());
 }
 
-
 #[cfg(test)]
 fn format_unknown_slash_command_message(name: &str) -> String {
     let suggestions = suggest_slash_commands(name);
@@ -175,7 +174,6 @@ fn format_unknown_slash_command_message(name: &str) -> String {
         )
     }
 }
-
 
 #[cfg(test)]
 mod tests {

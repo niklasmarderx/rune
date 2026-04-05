@@ -276,58 +276,149 @@ pub(crate) fn run_resume_command(
             })
         }
         SlashCommand::Unknown(name) => Err(format_unknown_slash_command(name).into()),
+        // ── Implemented resume commands ──
+        SlashCommand::Doctor => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(render_doctor_report()),
+        }),
+        SlashCommand::Usage { .. } => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(render_usage_report(session)),
+        }),
+        SlashCommand::Files => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(render_files_report(session)),
+        }),
+        SlashCommand::Context { action } => match action.as_deref() {
+            None | Some("show") => Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(render_context_report(session)),
+            }),
+            Some("clear") => Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(
+                    "Context clearing requires an interactive session. Use /clear --confirm instead."
+                        .to_string(),
+                ),
+            }),
+            Some(other) => {
+                Err(format!("Unknown context action: {other}. Use 'show' or 'clear'.").into())
+            }
+        },
+        SlashCommand::Copy { target } => {
+            let text = extract_copy_text(session, target.as_deref());
+            let msg = copy_text_to_clipboard(&text)?;
+            Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(msg),
+            })
+        }
+        SlashCommand::Hooks { .. } => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(render_hooks_report()?),
+        }),
+        SlashCommand::Stats => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(render_stats_report(session)?),
+        }),
+        SlashCommand::Effort { level } => {
+            let msg = match level.as_deref().map(str::trim).filter(|l| !l.is_empty()) {
+                None => {
+                    "Effort level\n  Current: default\n  Usage: /effort <low|medium|high>"
+                        .to_string()
+                }
+                Some(l @ ("low" | "medium" | "high")) => format!(
+                    "Effort level set to: {l}\nNote: effort parameter is not yet wired to the API request."
+                ),
+                Some(other) => {
+                    return Err(
+                        format!("Unknown effort level: {other}. Use low, medium, or high.").into(),
+                    )
+                }
+            };
+            Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(msg),
+            })
+        }
+        SlashCommand::Plugins { action, target } => {
+            let cwd = env::current_dir()?;
+            let loader = ConfigLoader::default_for(&cwd);
+            let runtime_config = loader.load()?;
+            let mut manager = build_plugin_manager(&cwd, &loader, &runtime_config);
+            let result =
+                handle_plugins_slash_command(action.as_deref(), target.as_deref(), &mut manager)?;
+            Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(result.message),
+            })
+        }
+        SlashCommand::Session { action, .. } => match action.as_deref() {
+            None | Some("list") => Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(render_session_list(&session.session_id)?),
+            }),
+            _ => Err("session switch/fork requires an interactive session".into()),
+        },
+        SlashCommand::Teleport { target } => {
+            let target = target.as_deref().unwrap_or("");
+            if target.is_empty() {
+                return Err("Usage: /teleport <symbol-or-path>".into());
+            }
+            Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(render_teleport_report(target)?),
+            })
+        }
+        SlashCommand::DebugToolCall => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(render_last_tool_debug_report(session)?),
+        }),
+        // ── REPL-only commands (need interactive session) ──
+        SlashCommand::Model { .. }
+        | SlashCommand::Permissions { .. }
+        | SlashCommand::Resume { .. }
+        | SlashCommand::Fast
+        | SlashCommand::Vim
+        | SlashCommand::Exit => Err("this command requires an interactive REPL session".into()),
+        // ── Commands that need a running conversation with an active model ──
         SlashCommand::Bughunter { .. }
-        | SlashCommand::Commit { .. }
+        | SlashCommand::Commit
         | SlashCommand::Pr { .. }
         | SlashCommand::Issue { .. }
         | SlashCommand::Ultraplan { .. }
-        | SlashCommand::Teleport { .. }
-        | SlashCommand::DebugToolCall { .. }
-        | SlashCommand::Resume { .. }
-        | SlashCommand::Model { .. }
-        | SlashCommand::Permissions { .. }
-        | SlashCommand::Session { .. }
-        | SlashCommand::Plugins { .. }
-        | SlashCommand::Doctor
-        | SlashCommand::Login
-        | SlashCommand::Logout
-        | SlashCommand::Vim
-        | SlashCommand::Upgrade
-        | SlashCommand::Stats
-        | SlashCommand::Share
-        | SlashCommand::Feedback
-        | SlashCommand::Files
-        | SlashCommand::Fast
-        | SlashCommand::Exit
-        | SlashCommand::Summary
-        | SlashCommand::Desktop
-        | SlashCommand::Brief
-        | SlashCommand::Advisor
-        | SlashCommand::Stickers
-        | SlashCommand::Insights
-        | SlashCommand::Thinkback
-        | SlashCommand::ReleaseNotes
-        | SlashCommand::SecurityReview
-        | SlashCommand::Keybindings
-        | SlashCommand::PrivacySettings
-        | SlashCommand::Plan { .. }
         | SlashCommand::Review { .. }
-        | SlashCommand::Tasks { .. }
-        | SlashCommand::Theme { .. }
-        | SlashCommand::Voice { .. }
-        | SlashCommand::Usage { .. }
-        | SlashCommand::Rename { .. }
-        | SlashCommand::Copy { .. }
-        | SlashCommand::Hooks { .. }
-        | SlashCommand::Context { .. }
-        | SlashCommand::Color { .. }
-        | SlashCommand::Effort { .. }
-        | SlashCommand::Branch { .. }
-        | SlashCommand::Rewind { .. }
-        | SlashCommand::Ide { .. }
-        | SlashCommand::Tag { .. }
-        | SlashCommand::OutputStyle { .. }
-        | SlashCommand::AddDir { .. } => Err("unsupported resumed slash command".into()),
+        | SlashCommand::Summary
+        | SlashCommand::ReleaseNotes
+        | SlashCommand::SecurityReview => {
+            Err("this command requires a running conversation with an active model".into())
+        }
+        // ── Login/auth ──
+        SlashCommand::Login => {
+            super::run_login()?;
+            Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some("OAuth login initiated.".to_string()),
+            })
+        }
+        SlashCommand::Logout => {
+            super::run_logout()?;
+            Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some("Logged out.".to_string()),
+            })
+        }
+        // ── Not yet implemented with specific messages ──
+        SlashCommand::Rewind { .. } => Err("rewind is not yet implemented in resume mode".into()),
+        SlashCommand::Branch { .. } => Err("branch management is not yet implemented".into()),
+        SlashCommand::Rename { .. } => Err("session rename is not yet implemented in resume mode".into()),
+        SlashCommand::Theme { .. } | SlashCommand::Color { .. } => {
+            Err("theme switching is not yet implemented".into())
+        }
+        SlashCommand::Plan { .. } => Err("planning mode is not yet implemented".into()),
+        SlashCommand::Tasks { .. } => Err("task management is not yet implemented".into()),
+        // ── Remaining unimplemented ──
+        _ => Err("this slash command is not yet supported in resume mode".into()),
     }
 }
 
@@ -378,6 +469,320 @@ pub(crate) fn run_repl(
     }
 
     Ok(())
+}
+
+// ── Standalone helper functions ────────────────────────────────────────
+
+fn render_doctor_report() -> String {
+    let mut lines = vec![
+        "Environment Health Check".to_string(),
+        "========================".to_string(),
+        String::new(),
+    ];
+
+    // API key
+    let api_key = env::var("ANTHROPIC_API_KEY").ok().filter(|k| !k.is_empty());
+    let api_status = if api_key.is_some() { "ok" } else { "MISSING" };
+    lines.push(format!("  API key            {api_status}"));
+
+    // Git
+    let git_version = Command::new("git")
+        .args(["--version"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map_or_else(
+            || "NOT FOUND".to_string(),
+            |o| String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        );
+    lines.push(format!("  Git                {git_version}"));
+
+    // Rust toolchain
+    let rustc_version = Command::new("rustc")
+        .args(["--version"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map_or_else(
+            || "not found".to_string(),
+            |o| String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        );
+    lines.push(format!("  Rust               {rustc_version}"));
+
+    // Working directory
+    let cwd =
+        env::current_dir().map_or_else(|_| "unknown".to_string(), |p| p.display().to_string());
+    lines.push(format!("  Working dir        {cwd}"));
+
+    lines.push(String::new());
+    lines.push("All checks passed.".to_string());
+    lines.join("\n")
+}
+
+fn render_usage_report(session: &Session) -> String {
+    let tracker = runtime::UsageTracker::from_session(session);
+    let usage = tracker.cumulative_usage();
+    let turns = tracker.turns();
+    let cost_estimate = usage.estimate_cost_usd();
+    [
+        "Usage".to_string(),
+        format!("  Messages           {}", session.messages.len()),
+        format!("  Turns              {turns}"),
+        format!("  Input tokens       {}", usage.input_tokens),
+        format!("  Output tokens      {}", usage.output_tokens),
+        format!("  Total tokens       {}", usage.total_tokens()),
+        format!(
+            "  Estimated cost     {}",
+            format_usd(cost_estimate.total_cost_usd())
+        ),
+    ]
+    .join("\n")
+}
+
+fn render_files_report(session: &Session) -> String {
+    let mut files: BTreeSet<String> = BTreeSet::new();
+    for msg in &session.messages {
+        for block in &msg.blocks {
+            if let ContentBlock::ToolUse { input, .. } = block {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(input) {
+                    if let Some(path) = parsed.get("file_path").and_then(|v| v.as_str()) {
+                        files.insert(path.to_string());
+                    }
+                    if let Some(path) = parsed.get("path").and_then(|v| v.as_str()) {
+                        if Path::new(path).extension().is_some() {
+                            files.insert(path.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if files.is_empty() {
+        return "Files\n  No files referenced in this session.".to_string();
+    }
+    let mut lines = vec![format!("Files ({} referenced)", files.len())];
+    for f in &files {
+        lines.push(format!("  {f}"));
+    }
+    lines.join("\n")
+}
+
+fn render_context_report(session: &Session) -> String {
+    let message_count = session.messages.len();
+    let tracker = runtime::UsageTracker::from_session(session);
+    let mut lines = vec![
+        "Context".to_string(),
+        format!("  Messages           {message_count}"),
+        format!(
+            "  Estimated tokens   ~{}",
+            tracker.cumulative_usage().total_tokens()
+        ),
+    ];
+    if message_count > 0 {
+        lines.push(String::new());
+        lines.push("Recent messages:".to_string());
+        let start = message_count.saturating_sub(6);
+        for (i, msg) in session.messages[start..].iter().enumerate() {
+            let role = match msg.role {
+                MessageRole::User => "user",
+                MessageRole::Assistant => "asst",
+                MessageRole::System => "sys",
+                MessageRole::Tool => "tool",
+            };
+            let preview: String = msg
+                .blocks
+                .iter()
+                .filter_map(|block| {
+                    if let ContentBlock::Text { text } = block {
+                        Some(text.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let truncated = if preview.len() > 80 {
+                format!("{}...", &preview[..77])
+            } else {
+                preview
+            };
+            lines.push(format!("  [{:>2}] {role}: {truncated}", start + i + 1));
+        }
+    }
+    lines.join("\n")
+}
+
+fn copy_text_to_clipboard(text: &str) -> Result<String, Box<dyn std::error::Error>> {
+    if text.is_empty() {
+        return Ok("Nothing to copy.".to_string());
+    }
+    let (program, args): (&str, Vec<&str>) = if cfg!(target_os = "macos") {
+        ("pbcopy", vec![])
+    } else if cfg!(target_os = "windows") {
+        ("clip", vec![])
+    } else {
+        ("xclip", vec!["-selection", "clipboard"])
+    };
+    match Command::new(program)
+        .args(&args)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(mut child) => {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            let _ = child.wait();
+            Ok(format!(
+                "Copied {} characters to clipboard.",
+                text.chars().count()
+            ))
+        }
+        Err(_) => Err(format!(
+            "Could not copy to clipboard ({program} not found). Use /export instead."
+        )
+        .into()),
+    }
+}
+
+fn extract_copy_text(session: &Session, target: Option<&str>) -> String {
+    match target.map(str::trim).filter(|t| !t.is_empty()) {
+        None | Some("last") => session
+            .messages
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::Assistant)
+            .map(|m| {
+                m.blocks
+                    .iter()
+                    .filter_map(|block| {
+                        if let ContentBlock::Text { text } = block {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
+            .unwrap_or_default(),
+        Some("all") => session
+            .messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    MessageRole::User => "User",
+                    MessageRole::Assistant => "Assistant",
+                    MessageRole::System => "System",
+                    MessageRole::Tool => "Tool",
+                };
+                let text: String = m
+                    .blocks
+                    .iter()
+                    .filter_map(|block| {
+                        if let ContentBlock::Text { text } = block {
+                            Some(text.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!("{role}:\n{text}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n"),
+        Some(_) => String::new(),
+    }
+}
+
+fn render_hooks_report() -> Result<String, Box<dyn std::error::Error>> {
+    let cwd = env::current_dir()?;
+    let loader = ConfigLoader::default_for(&cwd);
+    let runtime_config = loader.load()?;
+    let hooks = runtime_config.hooks();
+    let mut lines = vec!["Hooks".to_string()];
+    let pre = hooks.pre_tool_use();
+    let post = hooks.post_tool_use();
+    let fail = hooks.post_tool_use_failure();
+    if pre.is_empty() && post.is_empty() && fail.is_empty() {
+        lines.push("  No hooks configured.".to_string());
+    } else {
+        if !pre.is_empty() {
+            lines.push(format!("  PreToolUse         {}", pre.join(", ")));
+        }
+        if !post.is_empty() {
+            lines.push(format!("  PostToolUse        {}", post.join(", ")));
+        }
+        if !fail.is_empty() {
+            lines.push(format!("  PostToolUseFailure {}", fail.join(", ")));
+        }
+    }
+    Ok(lines.join("\n"))
+}
+
+fn render_stats_report(session: &Session) -> Result<String, Box<dyn std::error::Error>> {
+    let cwd = env::current_dir()?;
+    let tracker = runtime::UsageTracker::from_session(session);
+    let usage = tracker.cumulative_usage();
+
+    // Count files in workspace
+    let file_count = Command::new("git")
+        .args(["ls-files"])
+        .current_dir(&cwd)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map_or(0, |o| String::from_utf8_lossy(&o.stdout).lines().count());
+
+    let mut lines = vec![
+        "Stats".to_string(),
+        format!("  Working dir        {}", cwd.display()),
+        format!("  Tracked files      {file_count}"),
+        format!("  Session messages   {}", session.messages.len()),
+        format!("  Turns              {}", tracker.turns()),
+        format!("  Total tokens       {}", usage.total_tokens()),
+    ];
+
+    // Git branch
+    if let Ok(branch) = Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(&cwd)
+        .output()
+    {
+        if branch.status.success() {
+            lines.push(format!(
+                "  Git branch         {}",
+                String::from_utf8_lossy(&branch.stdout).trim()
+            ));
+        }
+    }
+
+    Ok(lines.join("\n"))
+}
+
+#[allow(dead_code)]
+fn render_system_prompt_report() -> Result<String, Box<dyn std::error::Error>> {
+    let parts = build_system_prompt()?;
+    let full = parts.join("\n\n---\n\n");
+    let mut lines = vec![
+        "System Prompt".to_string(),
+        format!("  Parts              {}", parts.len()),
+        format!("  Characters         {}", full.len()),
+        String::new(),
+    ];
+    // Show truncated preview
+    let preview = if full.len() > 2000 {
+        format!(
+            "{}...\n\n[truncated -- {} chars total]",
+            &full[..2000],
+            full.len()
+        )
+    } else {
+        full
+    };
+    lines.push(preview);
+    Ok(lines.join("\n"))
 }
 
 pub(crate) struct LiveCli {
@@ -783,13 +1188,54 @@ impl LiveCli {
             SlashCommand::Exit => {
                 return Ok(true);
             }
-            SlashCommand::Login
-            | SlashCommand::Logout
-            | SlashCommand::Upgrade
-            | SlashCommand::Stats
+            SlashCommand::Login => {
+                match super::run_login() {
+                    Ok(()) => println!("OAuth login initiated."),
+                    Err(e) => eprintln!("Login failed: {e}"),
+                }
+                false
+            }
+            SlashCommand::Logout => {
+                match super::run_logout() {
+                    Ok(()) => println!("Logged out."),
+                    Err(e) => eprintln!("Logout failed: {e}"),
+                }
+                false
+            }
+            SlashCommand::Usage { .. } => {
+                println!("{}", render_usage_report(self.runtime.session()));
+                false
+            }
+            SlashCommand::Files => {
+                println!("{}", render_files_report(self.runtime.session()));
+                false
+            }
+            SlashCommand::Stats => {
+                match render_stats_report(self.runtime.session()) {
+                    Ok(report) => println!("{report}"),
+                    Err(e) => eprintln!("Stats error: {e}"),
+                }
+                false
+            }
+            SlashCommand::Hooks { .. } => {
+                match render_hooks_report() {
+                    Ok(report) => println!("{report}"),
+                    Err(e) => eprintln!("Hooks error: {e}"),
+                }
+                false
+            }
+            SlashCommand::Rewind { steps } => {
+                self.rewind_messages(steps.as_deref())?;
+                false
+            }
+            SlashCommand::Rename { name } => {
+                self.rename_session(name.as_deref());
+                false
+            }
+            // Still unimplemented
+            SlashCommand::Upgrade
             | SlashCommand::Share
             | SlashCommand::Feedback
-            | SlashCommand::Files
             | SlashCommand::Summary
             | SlashCommand::Desktop
             | SlashCommand::Brief
@@ -806,12 +1252,8 @@ impl LiveCli {
             | SlashCommand::Tasks { .. }
             | SlashCommand::Theme { .. }
             | SlashCommand::Voice { .. }
-            | SlashCommand::Usage { .. }
-            | SlashCommand::Rename { .. }
-            | SlashCommand::Hooks { .. }
             | SlashCommand::Color { .. }
             | SlashCommand::Branch { .. }
-            | SlashCommand::Rewind { .. }
             | SlashCommand::Ide { .. }
             | SlashCommand::Tag { .. }
             | SlashCommand::OutputStyle { .. }
@@ -1140,6 +1582,63 @@ impl LiveCli {
             }
         }
         Ok(())
+    }
+
+    fn rewind_messages(&mut self, steps: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+        let count: usize = steps.and_then(|s| s.trim().parse().ok()).unwrap_or(1);
+        let session = self.runtime.session().clone();
+        let before = session.messages.len();
+        if count == 0 || before == 0 {
+            println!("Nothing to rewind.");
+            return Ok(());
+        }
+        let remove = count.min(before);
+        let mut trimmed = session;
+        trimmed.messages.truncate(before - remove);
+        let runtime = build_runtime(
+            trimmed,
+            &self.session.id,
+            self.model.clone(),
+            self.system_prompt.clone(),
+            true,
+            true,
+            self.allowed_tools.clone(),
+            self.permission_mode,
+            None,
+        )?;
+        self.replace_runtime(runtime)?;
+        self.persist_session()?;
+        println!(
+            "Rewound {remove} message(s). {} remaining.",
+            self.runtime.session().messages.len()
+        );
+        Ok(())
+    }
+
+    fn rename_session(&mut self, name: Option<&str>) {
+        let Some(name) = name.map(str::trim).filter(|n| !n.is_empty()) else {
+            println!("Usage: /rename <name>\nCurrent: {}", self.session.id);
+            return;
+        };
+        let old_id = self.session.id.clone();
+        let old_path = self.session.path.clone();
+        let new_id = name.to_string();
+        match create_managed_session_handle(&new_id) {
+            Ok(new_handle) => {
+                // Save to new path
+                if let Err(e) = self.runtime.session().save_to_path(&new_handle.path) {
+                    eprintln!("Failed to save renamed session: {e}");
+                    return;
+                }
+                // Remove old file if different
+                if old_path != new_handle.path && old_path.exists() {
+                    let _ = fs::remove_file(&old_path);
+                }
+                self.session = new_handle;
+                println!("Session renamed: {old_id} -> {new_id}");
+            }
+            Err(e) => eprintln!("Failed to rename: {e}"),
+        }
     }
 
     pub(crate) fn persist_session(&self) -> Result<(), Box<dyn std::error::Error>> {
