@@ -43,18 +43,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
 
-  test-rune-cli:
-    name: cargo test -p rune-cli
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust -> target
-      - name: Run crate tests
-        run: cargo test -p rune-cli
-
   test-workspace:
     name: cargo test --workspace
     runs-on: ubuntu-latest
@@ -79,4 +67,4 @@ jobs:
         with:
           workspaces: rust -> target
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets
+        run: cargo clippy --workspace --all-targets -- -D warnings
