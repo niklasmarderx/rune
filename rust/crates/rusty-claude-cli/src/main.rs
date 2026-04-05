@@ -2245,11 +2245,7 @@ impl LiveCli {
             Ok(summary) => {
                 self.replace_runtime(runtime)?;
                 let mut spinner = Spinner::new();
-                spinner.finish(
-                    "Done",
-                    TerminalRenderer::new().color_theme(),
-                    &mut stdout,
-                )?;
+                spinner.finish("Done", TerminalRenderer::new().color_theme(), &mut stdout)?;
                 println!();
                 if let Some(event) = summary.auto_compaction {
                     println!(
