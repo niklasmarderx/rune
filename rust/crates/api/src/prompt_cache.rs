@@ -168,9 +168,12 @@ impl PromptCache {
         }
 
         let expired = now_unix_secs().saturating_sub(entry.cached_at_unix_secs) >= ttl.as_secs();
+        // Reject cached entries with empty content — these are artifacts of API
+        // overload or thinking-only responses that should not be served again.
+        let empty_content = entry.response.content.is_empty();
         let mut inner = self.lock();
         inner.stats.last_completion_cache_key = Some(request_hash.clone());
-        if expired {
+        if expired || empty_content {
             inner.stats.completion_cache_misses += 1;
             let _ = fs::remove_file(entry_path);
             persist_state(&inner);
@@ -231,8 +234,12 @@ impl PromptCache {
 
         inner.previous = Some(current);
         if let Some(response) = response {
-            write_completion_entry(&inner.paths, &request_hash, response);
-            inner.stats.completion_cache_writes += 1;
+            // Only cache responses that have visible content — empty responses
+            // from API overload should not pollute the cache.
+            if !response.content.is_empty() {
+                write_completion_entry(&inner.paths, &request_hash, response);
+                inner.stats.completion_cache_writes += 1;
+            }
         }
         persist_state(&inner);
 

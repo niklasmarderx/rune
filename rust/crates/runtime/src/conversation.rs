@@ -710,11 +710,15 @@ fn build_assistant_message(
         ));
     }
     if blocks.is_empty() {
-        return Err(RuntimeError::new(
-            "The model returned an empty response. This can happen during API \
-             overload or when the context is too large. Try again or start a \
-             new session with /clear.",
-        ));
+        // The model returned no visible content (can happen during API overload
+        // or when the model uses only internal reasoning).  Instead of aborting
+        // the session, insert a synthetic placeholder so the conversation can
+        // continue.
+        blocks.push(ContentBlock::Text {
+            text: "[No visible response — the model may be experiencing high load. \
+                   Try sending your message again.]"
+                .to_string(),
+        });
     }
 
     Ok((
@@ -1598,16 +1602,22 @@ mod tests {
     }
 
     #[test]
-    fn build_assistant_message_requires_content() {
+    fn build_assistant_message_inserts_placeholder_for_empty_content() {
         // given
         let events = vec![AssistantEvent::MessageStop];
 
         // when
-        let error =
-            build_assistant_message(events).expect_err("assistant messages should require content");
+        let (message, _, _) = build_assistant_message(events)
+            .expect("empty content should produce placeholder, not error");
 
         // then
-        assert!(error.to_string().contains("empty response"));
+        assert_eq!(message.blocks.len(), 1);
+        match &message.blocks[0] {
+            ContentBlock::Text { text } => {
+                assert!(text.contains("No visible response"));
+            }
+            other => panic!("expected Text block, got: {other:?}"),
+        }
     }
 
     #[test]
