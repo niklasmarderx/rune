@@ -2192,19 +2192,33 @@ impl LiveCli {
 
     fn run_turn(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
-        let mut spinner = Spinner::new();
         let mut stdout = io::stdout();
-        spinner.tick(
-            "ᚱ Thinking...",
-            TerminalRenderer::new().color_theme(),
-            &mut stdout,
-        )?;
+
+        // Animated spinner in background thread
+        let stop_spinner = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stop_flag = stop_spinner.clone();
+        let spinner_handle = std::thread::spawn(move || {
+            let mut spinner = Spinner::new();
+            let theme = TerminalRenderer::new().color_theme().clone();
+            let mut out = io::stdout();
+            while !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = spinner.tick("ᚱ Thinking...", &theme, &mut out);
+                std::thread::sleep(std::time::Duration::from_millis(80));
+            }
+        });
+
         let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
         let result = runtime.run_turn(input, Some(&mut permission_prompter));
         hook_abort_monitor.stop();
+
+        // Stop spinner animation
+        stop_spinner.store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = spinner_handle.join();
+
         match result {
             Ok(summary) => {
                 self.replace_runtime(runtime)?;
+                let mut spinner = Spinner::new();
                 spinner.finish(
                     "✨ Done",
                     TerminalRenderer::new().color_theme(),
@@ -2222,6 +2236,7 @@ impl LiveCli {
             }
             Err(error) => {
                 runtime.shutdown_plugins()?;
+                let mut spinner = Spinner::new();
                 spinner.fail(
                     "❌ Request failed",
                     TerminalRenderer::new().color_theme(),
