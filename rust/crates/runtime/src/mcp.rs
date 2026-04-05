@@ -1,6 +1,6 @@
 use crate::config::{McpServerConfig, ScopedMcpServerConfig};
 
-const CLAUDEAI_SERVER_PREFIX: &str = "rune ";
+const CLAUDEAI_SERVER_PREFIX: &str = "claude.ai ";
 const CCR_PROXY_PATH_MARKERS: [&str; 2] = ["/v2/session_ingress/shttp/mcp/", "/v2/ccr-sessions/"];
 
 #[must_use]
