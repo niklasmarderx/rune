@@ -16,9 +16,6 @@
   <em>Multi-provider &middot; Permission-first &middot; Extensible &middot; Fast</em>
 </p>
 
-<p align="center">
-  <img src="assets/demo.gif" alt="Rune Code Demo" width="700" />
-</p>
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> &middot;
