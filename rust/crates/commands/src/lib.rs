@@ -1785,47 +1785,43 @@ pub fn resume_supported_slash_commands() -> Vec<&'static SlashCommandSpec> {
 
 fn slash_command_category(name: &str) -> &'static str {
     match name {
-        "help" | "status" | "sandbox" | "model" | "permissions" | "cost" | "resume" | "session"
-        | "version" | "login" | "logout" | "usage" | "stats" | "rename" | "privacy-settings" => {
-            "Session & visibility"
-        }
-        "compact" | "clear" | "config" | "memory" | "init" | "diff" | "commit" | "pr" | "issue"
-        | "export" | "plugin" | "branch" | "add-dir" | "files" | "hooks" | "release-notes" => {
-            "Workspace & git"
-        }
-        "agents" | "skills" | "teleport" | "debug-tool-call" | "mcp" | "context" | "tasks"
-        | "doctor" | "ide" | "desktop" => "Discovery & debugging",
-        "bughunter" | "ultraplan" | "review" | "security-review" | "advisor" | "insights" => {
-            "Analysis & automation"
-        }
-        "theme" | "vim" | "voice" | "color" | "effort" | "fast" | "brief" | "output-style"
-        | "keybindings" | "stickers" => "Appearance & input",
-        "copy" | "share" | "feedback" | "summary" | "tag" | "thinkback" | "plan" | "exit"
-        | "upgrade" | "rewind" => "Communication & control",
-        _ => "Other",
+        // Session
+        "clear" | "compact" | "resume" | "session" | "export" | "rename" | "rewind" | "history"
+        | "pin" | "unpin" | "bookmarks" | "tag" | "summary" => "Session",
+
+        // Navigation & Info
+        "help" | "status" | "cost" | "files" | "context" | "usage" | "doctor" | "version"
+        | "tokens" | "cache" | "stats" | "metrics" | "sandbox" => "Navigation",
+
+        // Configuration
+        "model" | "permissions" | "config" | "memory" | "effort" | "fast" | "vim" | "brief"
+        | "theme" | "color" | "output-style" | "keybindings" | "language" | "notifications"
+        | "telemetry" | "privacy-settings" | "max-tokens" | "temperature" | "reasoning"
+        | "budget" | "rate-limit" | "profile" | "allowed-tools" | "api-key" | "login"
+        | "logout" | "terminal-setup" | "reset" | "init" => "Configuration",
+
+        // Developer & Git
+        "diff" | "commit" | "pr" | "issue" | "review" | "branch" | "bughunter"
+        | "security-review" | "release-notes" | "stash" | "blame" | "log" | "git" | "changelog"
+        | "test" | "lint" | "build" | "run" | "explain" | "refactor" | "docs" | "fix" | "perf"
+        | "autofix" | "diagnostics" | "teleport" | "search" | "map" | "symbols" | "references"
+        | "definition" | "hover" | "focus" | "unfocus" | "workspace" | "add-dir" | "project"
+        | "ultraplan" | "plan" => "Developer",
+
+        // Plugins & Tools
+        "plugin" | "mcp" | "agents" | "skills" | "hooks" | "tasks" | "agent" | "subagent"
+        | "parallel" | "cron" | "team" | "benchmark" | "migrate" | "templates" => "Plugins & Tools",
+
+        // Exit
+        "exit" => "Exit",
+
+        _ => "More",
     }
 }
 
 fn format_slash_command_help_line(spec: &SlashCommandSpec) -> String {
     let name = slash_command_usage(spec);
-    let alias_suffix = if spec.aliases.is_empty() {
-        String::new()
-    } else {
-        format!(
-            " (aliases: {})",
-            spec.aliases
-                .iter()
-                .map(|alias| format!("/{alias}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    };
-    let resume = if spec.resume_supported {
-        " [resume]"
-    } else {
-        ""
-    };
-    format!("  {name:<66} {}{alias_suffix}{resume}", spec.summary)
+    format!("  {name:<28} {}", spec.summary)
 }
 
 fn levenshtein_distance(left: &str, right: &str) -> usize {
@@ -1904,40 +1900,86 @@ pub fn suggest_slash_commands(input: &str, limit: usize) -> Vec<String> {
 
 #[must_use]
 pub fn render_slash_command_help() -> String {
-    let mut lines = vec![
-        "Slash commands".to_string(),
-        "  Start here        /status, /diff, /agents, /skills, /commit".to_string(),
-        "  [resume]          also works with --resume SESSION.jsonl".to_string(),
-        String::new(),
+    let mut lines: Vec<String> = Vec::new();
+
+    // Core categories shown in the main help — curated order, limited to
+    // the most useful commands per group so the output stays scannable.
+    let core_categories = [
+        (
+            "Session",
+            &["clear", "compact", "resume", "session", "export", "rename"] as &[&str],
+        ),
+        (
+            "Navigation",
+            &[
+                "help", "status", "cost", "files", "context", "usage", "doctor",
+            ],
+        ),
+        (
+            "Configuration",
+            &[
+                "model",
+                "permissions",
+                "config",
+                "memory",
+                "effort",
+                "fast",
+                "vim",
+                "brief",
+                "theme",
+            ],
+        ),
+        (
+            "Developer",
+            &[
+                "diff",
+                "commit",
+                "pr",
+                "issue",
+                "review",
+                "bughunter",
+                "branch",
+                "teleport",
+            ],
+        ),
+        (
+            "Plugins & Tools",
+            &["plugin", "mcp", "agents", "skills", "hooks", "tasks"],
+        ),
     ];
 
-    let categories = [
-        "Session & visibility",
-        "Workspace & git",
-        "Discovery & debugging",
-        "Analysis & automation",
-    ];
-
-    for category in categories {
-        lines.push(category.to_string());
-        for spec in slash_command_specs()
-            .iter()
-            .filter(|spec| slash_command_category(spec.name) == category)
-        {
-            lines.push(format_slash_command_help_line(spec));
+    for (category, featured) in &core_categories {
+        lines.push(format!("\x1b[1m{category}\x1b[0m"));
+        for &name in *featured {
+            if let Some(spec) = slash_command_specs().iter().find(|s| s.name == name) {
+                lines.push(format_slash_command_help_line(spec));
+            }
         }
         lines.push(String::new());
     }
 
-    lines
-        .into_iter()
-        .rev()
-        .skip_while(String::is_empty)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect::<Vec<_>>()
-        .join("\n")
+    // Count remaining commands not shown above
+    let featured_set: std::collections::HashSet<&str> = core_categories
+        .iter()
+        .flat_map(|(_, names)| names.iter().copied())
+        .collect();
+    let remaining = slash_command_specs()
+        .iter()
+        .filter(|s| !featured_set.contains(s.name) && s.name != "exit")
+        .count();
+
+    if remaining > 0 {
+        lines.push(format!(
+            "\x1b[2m{remaining} more commands available \u{2014} type /help <command> for details.\x1b[0m"
+        ));
+    }
+
+    // Trim trailing empty lines
+    while lines.last().is_some_and(String::is_empty) {
+        lines.pop();
+    }
+
+    lines.join("\n")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3592,7 +3634,7 @@ mod tests {
 
         // then
         assert!(error.contains("Usage: /teleport <symbol-or-path>"));
-        assert!(error.contains("  Category         Discovery & debugging"));
+        assert!(error.contains("  Category         Developer"));
     }
 
     #[test]
@@ -3648,43 +3690,38 @@ mod tests {
     #[test]
     fn renders_help_from_shared_specs() {
         let help = render_slash_command_help();
-        assert!(help.contains("Start here        /status, /diff, /agents, /skills, /commit"));
-        assert!(help.contains("[resume]          also works with --resume SESSION.jsonl"));
-        assert!(help.contains("Session & visibility"));
-        assert!(help.contains("Workspace & git"));
-        assert!(help.contains("Discovery & debugging"));
-        assert!(help.contains("Analysis & automation"));
+        // Verify category headers are present
+        assert!(help.contains("Session"));
+        assert!(help.contains("Navigation"));
+        assert!(help.contains("Configuration"));
+        assert!(help.contains("Developer"));
+        assert!(help.contains("Plugins & Tools"));
+        // Verify featured commands appear
         assert!(help.contains("/help"));
         assert!(help.contains("/status"));
-        assert!(help.contains("/sandbox"));
         assert!(help.contains("/compact"));
         assert!(help.contains("/bughunter [scope]"));
         assert!(help.contains("/commit"));
         assert!(help.contains("/pr [context]"));
         assert!(help.contains("/issue [context]"));
-        assert!(help.contains("/ultraplan [task]"));
         assert!(help.contains("/teleport <symbol-or-path>"));
-        assert!(help.contains("/debug-tool-call"));
         assert!(help.contains("/model [model]"));
-        assert!(help.contains("/permissions [read-only|workspace-write|danger-full-access]"));
         assert!(help.contains("/clear [--confirm]"));
         assert!(help.contains("/cost"));
         assert!(help.contains("/resume <session-path>"));
         assert!(help.contains("/config [env|hooks|model|plugins]"));
         assert!(help.contains("/mcp [list|show <server>|help]"));
         assert!(help.contains("/memory"));
-        assert!(help.contains("/init"));
         assert!(help.contains("/diff"));
-        assert!(help.contains("/version"));
         assert!(help.contains("/export [file]"));
         assert!(help.contains("/session [list|switch <session-id>|fork [branch-name]]"));
-        assert!(help.contains("/sandbox"));
         assert!(help.contains(
             "/plugin [list|install <path>|enable <name>|disable <name>|uninstall <id>|update <id>]"
         ));
-        assert!(help.contains("aliases: /plugins, /marketplace"));
         assert!(help.contains("/agents [list|help]"));
         assert!(help.contains("/skills [list|install <path>|help]"));
+        // Verify "more commands" note appears
+        assert!(help.contains("more commands available"));
         assert_eq!(slash_command_specs().len(), 141);
         assert!(resume_supported_slash_commands().len() >= 39);
     }
@@ -3701,7 +3738,7 @@ mod tests {
         assert!(help.contains("/plugin"));
         assert!(help.contains("Summary          Manage Rune plugins"));
         assert!(help.contains("Aliases          /plugins, /marketplace"));
-        assert!(help.contains("Category         Workspace & git"));
+        assert!(help.contains("Category         Plugins & Tools"));
     }
 
     #[test]
@@ -3709,7 +3746,7 @@ mod tests {
         let help = render_slash_command_help_detail("mcp").expect("detail help should exist");
         assert!(help.contains("/mcp"));
         assert!(help.contains("Summary          Inspect configured MCP servers"));
-        assert!(help.contains("Category         Discovery & debugging"));
+        assert!(help.contains("Category         Plugins & Tools"));
         assert!(help.contains("Resume           Supported with --resume SESSION.jsonl"));
     }
 
@@ -3779,7 +3816,7 @@ mod tests {
         let result = handle_slash_command("/help", &session, CompactionConfig::default())
             .expect("help command should be handled");
         assert_eq!(result.session, session);
-        assert!(result.message.contains("Slash commands"));
+        assert!(result.message.contains("Session"));
     }
 
     #[test]

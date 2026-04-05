@@ -8,31 +8,39 @@ use crate::{
 };
 
 pub(crate) fn render_repl_help() -> String {
+    let header = format!("\x1b[1mRune v{VERSION}\x1b[0m \x1b[2m\u{2014} Rust CLI Agent\x1b[0m");
     [
-        "REPL".to_string(),
-        "  /exit                Quit the REPL".to_string(),
-        "  /quit                Quit the REPL".to_string(),
+        header,
+        String::new(),
+        render_slash_command_help(),
+        String::new(),
+        "\x1b[2mKeybindings\x1b[0m".to_string(),
         "  Up/Down              Navigate prompt history".to_string(),
         "  Tab                  Complete commands, modes, and recent sessions".to_string(),
         "  Ctrl-C               Clear input (or exit on empty prompt)".to_string(),
         "  Shift+Enter/Ctrl+J   Insert a newline".to_string(),
-        "  Auto-save            .rune/sessions/<session-id>.jsonl".to_string(),
-        "  Resume latest        /resume latest".to_string(),
-        "  Browse sessions      /session list".to_string(),
         String::new(),
-        render_slash_command_help(),
+        "Type \x1b[1m/exit\x1b[0m or \x1b[1mCtrl-D\x1b[0m to quit. \
+             Start a message with \x1b[1m/\x1b[0m to run a command."
+            .to_string(),
     ]
-    .join(
-        "
-",
-    )
+    .join("\n")
 }
 
 pub(crate) fn render_version_report() -> String {
     let git_sha = GIT_SHA.unwrap_or("unknown");
+    let short_sha = if git_sha.len() > 10 {
+        &git_sha[..10]
+    } else {
+        git_sha
+    };
     let target = BUILD_TARGET.unwrap_or("unknown");
     format!(
-        "Rune Code\n  Version          {VERSION}\n  Git SHA          {git_sha}\n  Target           {target}\n  Build date       {DEFAULT_DATE}"
+        "\x1b[1mRune Code\x1b[0m v{VERSION}\n\
+         \n\
+         \x1b[2m  Git SHA       \x1b[0m {short_sha}\n\
+         \x1b[2m  Target        \x1b[0m {target}\n\
+         \x1b[2m  Build date    \x1b[0m {DEFAULT_DATE}"
     )
 }
 

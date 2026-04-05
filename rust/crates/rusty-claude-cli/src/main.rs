@@ -20,16 +20,48 @@ mod runtime_setup;
 mod status;
 mod tool_format;
 
-pub(crate) use api_client::*;
-pub(crate) use auth::*;
-pub(crate) use cli_parser::*;
+pub(crate) use api_client::{
+    collect_prompt_cache_events, collect_tool_results, collect_tool_uses, convert_messages,
+    final_assistant_text, push_output_block, response_to_events, AnthropicRuntimeClient,
+};
+pub(crate) use auth::{resolve_cli_auth_source, run_login, run_logout};
+pub(crate) use cli_parser::{
+    default_permission_mode, dump_manifests, filter_tool_specs, format_unknown_slash_command,
+    normalize_permission_mode, parse_args, permission_mode_from_label, print_bootstrap_plan,
+    resolve_model_alias, suggest_slash_commands, AllowedToolSet, CliAction, CliOutputFormat,
+};
 pub(crate) use help::{print_help, print_help_to, render_repl_help, render_version_report};
-pub(crate) use live_cli::*;
-pub(crate) use progress::*;
-pub(crate) use reports::*;
-pub(crate) use runtime_setup::*;
-pub(crate) use status::*;
-pub(crate) use tool_format::*;
+pub(crate) use live_cli::{
+    format_resume_report, render_resume_usage, resume_session, run_init, run_repl,
+    run_resume_command, slash_command_completion_candidates_with_sessions, validate_no_args,
+    CliToolExecutor, LiveCli,
+};
+pub(crate) use progress::{
+    describe_tool_progress, format_internal_prompt_progress_line, InternalPromptProgressEvent,
+    InternalPromptProgressReporter, InternalPromptProgressState,
+};
+pub(crate) use reports::{
+    create_managed_session_handle, format_bughunter_report, format_issue_report, format_pr_report,
+    format_ultraplan_report, list_managed_sessions, render_config_report, render_export_text,
+    render_last_tool_debug_report, render_memory_report, render_session_list,
+    render_teleport_report, resolve_session_reference, write_session_clear_backup, SessionHandle,
+};
+pub(crate) use runtime_setup::{
+    build_plugin_manager, build_runtime, build_runtime_plugin_state_with_loader,
+    build_runtime_with_plugin_state, permission_policy, BuiltRuntime, CliPermissionPrompter,
+    HookAbortMonitor, ListMcpResourcesRequest, McpToolRequest, ReadMcpResourceRequest,
+    RuntimeMcpState, RuntimePluginState, ToolSearchRequest,
+};
+pub(crate) use status::{
+    format_auto_compaction_notice, format_commit_preflight_report, format_commit_skipped_report,
+    format_compact_report, format_cost_report, format_model_report, format_model_switch_report,
+    format_permissions_report, format_permissions_switch_report, format_sandbox_report,
+    format_status_report, parse_git_status_branch, parse_git_status_metadata_for,
+    parse_git_workspace_summary, print_sandbox_status_snapshot, print_status_snapshot,
+    render_diff_report, render_diff_report_for, resolve_git_branch_for, status_context,
+    GitWorkspaceSummary, StatusContext, StatusUsage,
+};
+pub(crate) use tool_format::{format_tool_call_start, format_tool_result};
 
 use std::collections::BTreeSet;
 use std::env;
@@ -845,42 +877,36 @@ mod tests {
     }
 
     #[test]
-    fn shared_help_uses_resume_annotation_copy() {
+    fn shared_help_uses_category_headers() {
         let help = commands::render_slash_command_help();
-        assert!(help.contains("Slash commands"));
-        assert!(help.contains("works with --resume SESSION.jsonl"));
+        assert!(help.contains("Session"));
+        assert!(help.contains("Navigation"));
+        assert!(help.contains("Developer"));
     }
 
     #[test]
     fn repl_help_includes_shared_commands_and_exit() {
         let help = render_repl_help();
-        assert!(help.contains("REPL"));
+        assert!(help.contains("Rune v"));
         assert!(help.contains("/help"));
         assert!(help.contains("Complete commands, modes, and recent sessions"));
         assert!(help.contains("/status"));
-        assert!(help.contains("/sandbox"));
         assert!(help.contains("/model [model]"));
-        assert!(help.contains("/permissions [read-only|workspace-write|danger-full-access]"));
         assert!(help.contains("/clear [--confirm]"));
         assert!(help.contains("/cost"));
         assert!(help.contains("/resume <session-path>"));
         assert!(help.contains("/config [env|hooks|model|plugins]"));
         assert!(help.contains("/mcp [list|show <server>|help]"));
         assert!(help.contains("/memory"));
-        assert!(help.contains("/init"));
         assert!(help.contains("/diff"));
-        assert!(help.contains("/version"));
         assert!(help.contains("/export [file]"));
         assert!(help.contains("/session [list|switch <session-id>|fork [branch-name]]"));
         assert!(help.contains(
             "/plugin [list|install <path>|enable <name>|disable <name>|uninstall <id>|update <id>]"
         ));
-        assert!(help.contains("aliases: /plugins, /marketplace"));
         assert!(help.contains("/agents"));
         assert!(help.contains("/skills"));
         assert!(help.contains("/exit"));
-        assert!(help.contains("Auto-save            .rune/sessions/<session-id>.jsonl"));
-        assert!(help.contains("Resume latest        /resume latest"));
     }
 
     #[test]
@@ -1916,6 +1942,7 @@ UU conflicted.rs",
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn build_runtime_plugin_state_discovers_mcp_tools_and_surfaces_pending_servers() {
         let config_home = temp_dir();
         let workspace = temp_dir();
