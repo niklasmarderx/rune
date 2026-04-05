@@ -6,7 +6,10 @@ use std::time::UNIX_EPOCH;
 
 use runtime::{ConfigLoader, ConfigSource, ContentBlock, MessageRole, ProjectContext, Session};
 
-use crate::{DEFAULT_DATE, LATEST_SESSION_REFERENCE, PRIMARY_SESSION_EXTENSION};
+use crate::{
+    DEFAULT_DATE, LATEST_SESSION_REFERENCE, LEGACY_SESSION_EXTENSION, PRIMARY_SESSION_EXTENSION,
+    SESSION_REFERENCE_ALIASES,
+};
 
 // ── Session summary struct ────────────────────────────────────────────────────
 
@@ -504,4 +507,89 @@ fn truncate_for_prompt(value: &str, limit: usize) -> String {
         let truncated = value.chars().take(limit).collect::<String>();
         format!("{}\n…[truncated]", truncated.trim_end())
     }
+}
+
+// ── Session handle and resolution ────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub(crate) struct SessionHandle {
+    pub(crate) id: String,
+    pub(crate) path: PathBuf,
+}
+
+pub(crate) fn create_managed_session_handle(
+    session_id: &str,
+) -> Result<SessionHandle, Box<dyn std::error::Error>> {
+    let id = session_id.to_string();
+    let path = sessions_dir()?.join(format!("{id}.{PRIMARY_SESSION_EXTENSION}"));
+    Ok(SessionHandle { id, path })
+}
+
+pub(crate) fn resolve_session_reference(
+    reference: &str,
+) -> Result<SessionHandle, Box<dyn std::error::Error>> {
+    if SESSION_REFERENCE_ALIASES
+        .iter()
+        .any(|alias| reference.eq_ignore_ascii_case(alias))
+    {
+        let latest = latest_managed_session()?;
+        return Ok(SessionHandle {
+            id: latest.id,
+            path: latest.path,
+        });
+    }
+
+    let direct = PathBuf::from(reference);
+    let looks_like_path = direct.extension().is_some() || direct.components().count() > 1;
+    let path = if direct.exists() {
+        direct
+    } else if looks_like_path {
+        return Err(format_missing_session_reference(reference).into());
+    } else {
+        resolve_managed_session_path(reference)?
+    };
+    let id = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .and_then(|name| {
+            name.strip_suffix(&format!(".{PRIMARY_SESSION_EXTENSION}"))
+                .or_else(|| name.strip_suffix(&format!(".{LEGACY_SESSION_EXTENSION}")))
+        })
+        .unwrap_or(reference)
+        .to_string();
+    Ok(SessionHandle { id, path })
+}
+
+pub(crate) fn resolve_managed_session_path(
+    session_id: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let directory = sessions_dir()?;
+    for extension in [PRIMARY_SESSION_EXTENSION, LEGACY_SESSION_EXTENSION] {
+        let path = directory.join(format!("{session_id}.{extension}"));
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    Err(format_missing_session_reference(session_id).into())
+}
+
+pub(crate) fn write_session_clear_backup(
+    session: &Session,
+    session_path: &Path,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let backup_path = session_clear_backup_path(session_path);
+    session.save_to_path(&backup_path)?;
+    Ok(backup_path)
+}
+
+pub(crate) fn session_clear_backup_path(session_path: &Path) -> PathBuf {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map_or(0, |duration| duration.as_millis());
+    let file_name = session_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("session.jsonl");
+    session_path.with_file_name(format!("{file_name}.before-clear-{timestamp}.bak"))
 }
