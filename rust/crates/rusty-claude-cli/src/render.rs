@@ -656,8 +656,19 @@ fn find_stream_safe_boundary(markdown: &str) -> Option<usize> {
             continue;
         }
 
-        if trimmed.is_empty() {
+        // Outside code blocks: every completed line is a safe boundary.
+        // This allows incremental rendering line-by-line instead of waiting
+        // for an empty line (double newline). Empty lines remain valid too.
+        if line.ends_with('\n') {
             last_boundary = Some(offset + line.len());
+        }
+    }
+
+    // Fallback: if the buffer is large but has no newlines (e.g. a very long
+    // inline paragraph), flush at the last word boundary to keep output flowing.
+    if last_boundary.is_none() && markdown.len() > 120 {
+        if let Some(pos) = markdown[..markdown.len().min(200)].rfind(' ') {
+            last_boundary = Some(pos + 1);
         }
     }
 
