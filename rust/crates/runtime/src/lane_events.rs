@@ -235,7 +235,10 @@ mod tests {
 
         assert_eq!(blocked_event.event, LaneEventName::Blocked);
         assert_eq!(blocked_event.status, LaneEventStatus::Blocked);
-        assert_eq!(blocked_event.failure_class, Some(LaneFailureClass::McpStartup));
+        assert_eq!(
+            blocked_event.failure_class,
+            Some(LaneFailureClass::McpStartup)
+        );
         assert_eq!(failed.event, LaneEventName::Failed);
         assert_eq!(failed.status, LaneEventStatus::Failed);
         assert_eq!(failed.detail.as_deref(), Some("broken server"));

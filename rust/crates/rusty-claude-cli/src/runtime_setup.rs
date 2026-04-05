@@ -16,6 +16,14 @@ use serde::Deserialize;
 use serde_json::json;
 use tools::{GlobalToolRegistry, RuntimeToolDefinition};
 
+type McpStateResult = Result<
+    (
+        Option<Arc<Mutex<RuntimeMcpState>>>,
+        Vec<RuntimeToolDefinition>,
+    ),
+    Box<dyn std::error::Error>,
+>;
+
 use super::{
     AllowedToolSet, AnthropicRuntimeClient, CliToolExecutor, InternalPromptProgressReporter,
 };
@@ -337,15 +345,7 @@ impl RuntimeMcpState {
     }
 }
 
-pub(crate) fn build_runtime_mcp_state(
-    runtime_config: &runtime::RuntimeConfig,
-) -> Result<
-    (
-        Option<Arc<Mutex<RuntimeMcpState>>>,
-        Vec<RuntimeToolDefinition>,
-    ),
-    Box<dyn std::error::Error>,
-> {
+pub(crate) fn build_runtime_mcp_state(runtime_config: &runtime::RuntimeConfig) -> McpStateResult {
     let Some((mcp_state, discovery)) = RuntimeMcpState::new(runtime_config)? else {
         return Ok((None, Vec::new()));
     };

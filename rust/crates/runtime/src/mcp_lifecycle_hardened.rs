@@ -164,9 +164,7 @@ impl McpLifecycleState {
 
     #[must_use]
     pub fn errors_for_phase(&self, phase: McpLifecyclePhase) -> &[McpErrorSurface] {
-        self.phase_errors
-            .get(&phase)
-            .map_or(&[], Vec::as_slice)
+        self.phase_errors.get(&phase).map_or(&[], Vec::as_slice)
     }
 
     #[must_use]
@@ -274,11 +272,16 @@ impl McpLifecycleValidator {
             | (McpLifecyclePhase::ServerRegistration, McpLifecyclePhase::SpawnConnect)
             | (McpLifecyclePhase::SpawnConnect, McpLifecyclePhase::InitializeHandshake)
             | (McpLifecyclePhase::InitializeHandshake, McpLifecyclePhase::ToolDiscovery)
-            | (McpLifecyclePhase::ToolDiscovery,
-                McpLifecyclePhase::ResourceDiscovery | McpLifecyclePhase::Ready)
-            | (McpLifecyclePhase::ResourceDiscovery
+            | (
+                McpLifecyclePhase::ToolDiscovery,
+                McpLifecyclePhase::ResourceDiscovery | McpLifecyclePhase::Ready,
+            )
+            | (
+                McpLifecyclePhase::ResourceDiscovery
                 | McpLifecyclePhase::Invocation
-                | McpLifecyclePhase::ErrorSurfacing, McpLifecyclePhase::Ready)
+                | McpLifecyclePhase::ErrorSurfacing,
+                McpLifecyclePhase::Ready,
+            )
             | (McpLifecyclePhase::Ready, McpLifecyclePhase::Invocation)
             | (McpLifecyclePhase::ErrorSurfacing, McpLifecyclePhase::Shutdown)
             | (McpLifecyclePhase::Shutdown, McpLifecyclePhase::Cleanup) => true,

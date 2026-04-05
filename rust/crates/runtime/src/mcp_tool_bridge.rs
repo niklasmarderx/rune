@@ -77,10 +77,7 @@ impl McpToolRegistry {
         Self::default()
     }
 
-    pub fn set_manager(
-        &self,
-        manager: Arc<AsyncMcpManager>,
-    ) -> Result<(), Arc<AsyncMcpManager>> {
+    pub fn set_manager(&self, manager: Arc<AsyncMcpManager>) -> Result<(), Arc<AsyncMcpManager>> {
         self.manager.set(manager)
     }
 
@@ -206,8 +203,7 @@ impl McpToolRegistry {
 
                         match (call_result, shutdown_result) {
                             (Ok(response), Ok(())) => Ok(response),
-                            (Err(error), Ok(()) | Err(_))
-                            | (Ok(_), Err(error)) => Err(error),
+                            (Err(error), Ok(()) | Err(_)) | (Ok(_), Err(error)) => Err(error),
                         }
                     }?;
 
@@ -579,7 +575,9 @@ mod tests {
             "alpha".to_string(),
             manager_server_config(&script_path, "alpha", &log_path),
         )]);
-        let manager = Arc::new(tokio::sync::Mutex::new(McpServerManager::from_servers(&servers)));
+        let manager = Arc::new(tokio::sync::Mutex::new(McpServerManager::from_servers(
+            &servers,
+        )));
 
         let registry = McpToolRegistry::new();
         registry.register_server(
@@ -840,9 +838,9 @@ mod tests {
             None,
         );
         registry
-            .set_manager(Arc::new(tokio::sync::Mutex::new(McpServerManager::from_servers(
-                &servers,
-            ))))
+            .set_manager(Arc::new(tokio::sync::Mutex::new(
+                McpServerManager::from_servers(&servers),
+            )))
             .expect("manager should only be set once");
 
         let result = registry

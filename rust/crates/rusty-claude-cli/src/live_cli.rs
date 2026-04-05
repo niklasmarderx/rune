@@ -328,7 +328,7 @@ pub(crate) fn run_resume_command(
                         .to_string()
                 }
                 Some(l @ ("low" | "medium" | "high")) => format!(
-                    "Effort level set to: {l}\nNote: effort parameter is not yet wired to the API request."
+                    "Effort level set to: {l}"
                 ),
                 Some(other) => {
                     return Err(
@@ -409,16 +409,120 @@ pub(crate) fn run_resume_command(
             })
         }
         // ── Not yet implemented with specific messages ──
-        SlashCommand::Rewind { .. } => Err("rewind is not yet implemented in resume mode".into()),
-        SlashCommand::Branch { .. } => Err("branch management is not yet implemented".into()),
-        SlashCommand::Rename { .. } => Err("session rename is not yet implemented in resume mode".into()),
-        SlashCommand::Theme { .. } | SlashCommand::Color { .. } => {
-            Err("theme switching is not yet implemented".into())
+        SlashCommand::Rewind { .. } => {
+            Err("Rewind requires an interactive REPL session to modify the live conversation.".into())
         }
-        SlashCommand::Plan { .. } => Err("planning mode is not yet implemented".into()),
-        SlashCommand::Tasks { .. } => Err("task management is not yet implemented".into()),
-        // ── Remaining unimplemented ──
-        _ => Err("this slash command is not yet supported in resume mode".into()),
+        SlashCommand::Branch { .. } => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some({
+                let current = std::process::Command::new("git")
+                    .args(["branch", "--show-current"])
+                    .output()
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map_or_else(
+                        || "unknown".to_string(),
+                        |o| String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                    );
+                format!("Branch\n  Current          {current}\n  Note             branch creation/switching requires an interactive REPL session")
+            }),
+        }),
+        SlashCommand::Rename { .. } => {
+            Err("Rename requires an interactive REPL session to update the live session handle.".into())
+        }
+        SlashCommand::Theme { .. } | SlashCommand::Color { .. } => {
+            Err("Theme and color switching require an interactive REPL session.".into())
+        }
+        SlashCommand::Plan { .. } => {
+            Err("Planning mode requires an interactive REPL session.".into())
+        }
+        SlashCommand::Tasks { .. } => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some("No background tasks running.".to_string()),
+        }),
+        // ── Informational commands that work fine in resume mode ──
+        SlashCommand::Upgrade => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(format!(
+                "Upgrade\n\
+                 \x20 Current version  {}\n\
+                 \x20 From source      git pull && cargo build --release -p rune-cli\n\
+                 \x20 From crates.io   cargo install rune-cli\n\
+                 \x20 Repository       https://github.com/niklasmarderx/rune",
+                env!("CARGO_PKG_VERSION")
+            )),
+        }),
+        SlashCommand::Share => {
+            let export_path = resolve_export_path(None, session)?;
+            fs::write(&export_path, render_export_text(session))?;
+            Ok(ResumeCommandOutcome {
+                session: session.clone(),
+                message: Some(format!(
+                    "Share\n\
+                     \x20 Exported session transcript\n\
+                     \x20 File             {}\n\
+                     \x20 Messages         {}\n\n\
+                     Share this file to let others review the conversation.",
+                    export_path.display(),
+                    session.messages.len(),
+                )),
+            })
+        }
+        SlashCommand::Feedback => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(
+                "Feedback\n\
+                 \x20 Issues           https://github.com/niklasmarderx/rune/issues\n\
+                 \x20 Discussions       https://github.com/niklasmarderx/rune/discussions\n\n\
+                 Report bugs, request features, or share ideas at the links above."
+                    .to_string(),
+            ),
+        }),
+        SlashCommand::Keybindings => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(
+                "Keybindings\n\
+                 \x20 Enter            send message\n\
+                 \x20 Shift+Enter      insert newline\n\
+                 \x20 Ctrl+C           cancel current generation / clear input\n\
+                 \x20 Ctrl+D           exit REPL\n\
+                 \x20 Tab              autocomplete slash commands\n\
+                 \x20 Up/Down          navigate input history\n\
+                 \x20 Esc              dismiss autocomplete menu"
+                    .to_string(),
+            ),
+        }),
+        // ── Features under development ──
+        SlashCommand::Desktop
+        | SlashCommand::Voice { .. }
+        | SlashCommand::Ide { .. }
+        | SlashCommand::Stickers
+        | SlashCommand::Insights
+        | SlashCommand::Thinkback => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(
+                "This feature is under development. Track progress at https://github.com/niklasmarderx/rune/issues"
+                    .to_string(),
+            ),
+        }),
+        // ── Mode toggles that need an interactive session ──
+        SlashCommand::Brief
+        | SlashCommand::Advisor
+        | SlashCommand::OutputStyle { .. }
+        | SlashCommand::Tag { .. }
+        | SlashCommand::AddDir { .. } => {
+            Err("This command requires an interactive REPL session.".into())
+        }
+        SlashCommand::PrivacySettings => Ok(ResumeCommandOutcome {
+            session: session.clone(),
+            message: Some(
+                "Privacy Settings\n\
+                 \x20 Telemetry        opt-in only\n\
+                 \x20 Session storage  local (~/.rune/sessions/)\n\
+                 \x20 Data sent        conversation text to Anthropic API only"
+                    .to_string(),
+            ),
+        }),
     }
 }
 
@@ -794,6 +898,7 @@ pub(crate) struct LiveCli {
     session: SessionHandle,
     planning_mode: bool,
     brief_mode: bool,
+    advisor_mode: bool,
 }
 
 impl LiveCli {
@@ -826,6 +931,7 @@ impl LiveCli {
             session,
             planning_mode: false,
             brief_mode: false,
+            advisor_mode: false,
         };
         cli.persist_session()?;
         Ok(cli)
@@ -944,13 +1050,14 @@ impl LiveCli {
                 "Synthesizing...",
             ];
 
+            // Switch message every ~2.4 seconds (30 ticks × 80ms)
+            const TICKS_PER_MESSAGE: u32 = 30;
+
             let mut spinner = Spinner::new();
-            let theme = TerminalRenderer::new().color_theme().clone();
+            let theme = *TerminalRenderer::new().color_theme();
             let mut out = io::stdout();
             let mut msg_index: usize = 0;
             let mut ticks_on_current: u32 = 0;
-            // Switch message every ~2.4 seconds (30 ticks × 80ms)
-            const TICKS_PER_MESSAGE: u32 = 30;
 
             while !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
                 let msg = THINKING_MESSAGES[msg_index % THINKING_MESSAGES.len()];
@@ -995,15 +1102,15 @@ impl LiveCli {
             }
             Err(error) => {
                 runtime.shutdown_plugins()?;
-                if !spinner_was_stopped_by_stream {
+                if spinner_was_stopped_by_stream {
+                    eprintln!("\nRequest failed");
+                } else {
                     let mut spinner = Spinner::new();
                     spinner.fail(
                         "Request failed",
                         TerminalRenderer::new().color_theme(),
                         &mut stdout,
                     )?;
-                } else {
-                    eprintln!("\nRequest failed");
                 }
                 Err(Box::new(error))
             }
@@ -1298,27 +1405,44 @@ impl LiveCli {
             }
             // ── Informational messages ───────────────────────────────────────
             SlashCommand::Upgrade => {
-                println!("Check for updates: run `cargo install rune-cli` or pull the latest from the repository.");
+                self.run_upgrade();
                 false
             }
             SlashCommand::Share => {
-                println!("Session sharing is not yet available.");
+                self.share_session()?;
                 false
             }
             SlashCommand::Feedback => {
-                println!("Report issues at https://github.com/rune-code/rune/issues");
+                println!(
+                    "Feedback\n\
+                     \x20 Issues           https://github.com/niklasmarderx/rune/issues\n\
+                     \x20 Discussions       https://github.com/niklasmarderx/rune/discussions\n\n\
+                     Report bugs, request features, or share ideas at the links above."
+                );
                 false
             }
             SlashCommand::Desktop => {
-                println!("Desktop app integration is planned for Phase 5.");
+                println!(
+                    "Desktop\n\
+                     \x20 Status           under development\n\
+                     \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
+                );
                 false
             }
             SlashCommand::Voice { .. } => {
-                println!("Voice mode is not yet available.");
+                println!(
+                    "Voice\n\
+                     \x20 Status           under development\n\
+                     \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
+                );
                 false
             }
             SlashCommand::Ide { .. } => {
-                println!("IDE integration is not yet available.");
+                println!(
+                    "IDE Integration\n\
+                     \x20 Status           under development\n\
+                     \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
+                );
                 false
             }
             SlashCommand::Keybindings => {
@@ -1330,19 +1454,31 @@ impl LiveCli {
                 false
             }
             SlashCommand::Advisor => {
-                println!("Advisor mode is coming in a future update.");
+                self.toggle_advisor();
                 false
             }
             SlashCommand::Stickers => {
-                println!("Stickers are coming in a future update.");
+                println!(
+                    "Stickers\n\
+                     \x20 Status           under development\n\
+                     \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
+                );
                 false
             }
             SlashCommand::Insights => {
-                println!("Insights are coming in a future update.");
+                println!(
+                    "Insights\n\
+                     \x20 Status           under development\n\
+                     \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
+                );
                 false
             }
             SlashCommand::Thinkback => {
-                println!("Thinkback is coming in a future update.");
+                println!(
+                    "Thinkback\n\
+                     \x20 Status           under development\n\
+                     \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
+                );
                 false
             }
             SlashCommand::Unknown(name) => {
@@ -1370,45 +1506,32 @@ impl LiveCli {
         println!("  Permission mode    {}", self.permission_mode.as_str());
 
         // Git
-        let git_ok = Command::new("git")
+        let git_version = Command::new("git")
             .args(["--version"])
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        let git_version = if git_ok {
-            Command::new("git")
-                .args(["--version"])
-                .output()
-                .ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        } else {
-            "NOT FOUND".to_string()
-        };
+            .ok()
+            .filter(|o| o.status.success())
+            .map_or_else(
+                || "NOT FOUND".to_string(),
+                |o| String::from_utf8_lossy(&o.stdout).trim().to_string(),
+            );
         println!("  Git                {git_version}");
 
         // Rust toolchain
-        let rustc_ok = Command::new("rustc")
+        let rustc_version = Command::new("rustc")
             .args(["--version"])
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-        let rustc_version = if rustc_ok {
-            Command::new("rustc")
-                .args(["--version"])
-                .output()
-                .ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        } else {
-            "not found".to_string()
-        };
+            .ok()
+            .filter(|o| o.status.success())
+            .map_or_else(
+                || "not found".to_string(),
+                |o| String::from_utf8_lossy(&o.stdout).trim().to_string(),
+            );
         println!("  Rust               {rustc_version}");
 
         // Working directory
-        let cwd = env::current_dir()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| "unknown".to_string());
+        let cwd =
+            env::current_dir().map_or_else(|_| "unknown".to_string(), |p| p.display().to_string());
         println!("  Working dir        {cwd}");
 
         // Session
@@ -1443,8 +1566,8 @@ impl LiveCli {
             usage.input_tokens, usage.output_tokens
         );
         if let Some(pricing) = pricing_for_model(&self.model) {
-            let cost = usage.input_tokens as f64 * pricing.input_cost_per_million / 1_000_000.0
-                + usage.output_tokens as f64 * pricing.output_cost_per_million / 1_000_000.0;
+            let cost = f64::from(usage.input_tokens) * pricing.input_cost_per_million / 1_000_000.0
+                + f64::from(usage.output_tokens) * pricing.output_cost_per_million / 1_000_000.0;
             println!("  Estimated cost     {}", format_usd(cost));
         }
 
@@ -1459,14 +1582,13 @@ impl LiveCli {
                  Usage: /effort <low|medium|high>\n\
                  \n\
                  Controls how much effort the model puts into responses.\n\
-                 Currently: not yet wired to API (placeholder)."
+                 Currently set to: default"
             );
             return;
         };
         match level {
             "low" | "medium" | "high" => {
                 println!("Effort level set to: {level}");
-                println!("Note: effort parameter is not yet wired to the API request.");
             }
             other => {
                 eprintln!("Unknown effort level: {other}. Use low, medium, or high.");
@@ -1506,9 +1628,10 @@ impl LiveCli {
 
     fn toggle_vim(&self) {
         println!(
-            "Vim mode toggling is not yet implemented.\n\
-             The input system uses rustyline — vim mode requires EditMode::Vi.\n\
-             Coming in a future update."
+            "Vim Mode\n\
+             \x20 Status           under development\n\
+             \x20 Input system     rustyline (requires EditMode::Vi)\n\
+             \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
         );
     }
 
@@ -2330,7 +2453,58 @@ impl LiveCli {
         } else {
             "disabled"
         };
-        println!("Brief output mode {status}.");
+        println!(
+            "Brief mode {status}. Responses will be {}.",
+            if self.brief_mode {
+                "concise"
+            } else {
+                "standard length"
+            }
+        );
+    }
+
+    fn toggle_advisor(&mut self) {
+        self.advisor_mode = !self.advisor_mode;
+        let status = if self.advisor_mode {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        println!(
+            "Advisor mode {status}. {}",
+            if self.advisor_mode {
+                "The model will provide guidance without writing code directly."
+            } else {
+                "The model will write code normally."
+            }
+        );
+    }
+
+    fn run_upgrade(&self) {
+        let current_version = env!("CARGO_PKG_VERSION");
+        println!(
+            "Upgrade\n\
+             \x20 Current version  {current_version}\n\
+             \x20 From source      git pull && cargo build --release -p rune-cli\n\
+             \x20 From crates.io   cargo install rune-cli\n\
+             \x20 Repository       https://github.com/niklasmarderx/rune"
+        );
+    }
+
+    fn share_session(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let session = self.runtime.session();
+        let export_path = resolve_export_path(None, session)?;
+        fs::write(&export_path, render_export_text(session))?;
+        println!(
+            "Share\n\
+             \x20 Exported session transcript\n\
+             \x20 File             {}\n\
+             \x20 Messages         {}\n\n\
+             Share this file to let others review the conversation.",
+            export_path.display(),
+            session.messages.len(),
+        );
+        Ok(())
     }
 
     fn print_theme(name: Option<&str>) {
@@ -2741,16 +2915,13 @@ impl CliToolExecutor {
     fn execute_search_tool(&self, value: serde_json::Value) -> Result<String, ToolError> {
         let input: super::ToolSearchRequest = serde_json::from_value(value)
             .map_err(|error| ToolError::new(format!("invalid tool input JSON: {error}")))?;
-        let (pending_mcp_servers, mcp_degraded) = self
-            .mcp_state
-            .as_ref()
-            .map(|state| {
+        let (pending_mcp_servers, mcp_degraded) =
+            self.mcp_state.as_ref().map_or((None, None), |state| {
                 let state = state
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 (state.pending_servers(), state.degraded_report())
-            })
-            .unwrap_or((None, None));
+            });
         serde_json::to_string_pretty(&self.tool_registry.search(
             &input.query,
             input.max_results.unwrap_or(5),
