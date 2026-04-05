@@ -87,8 +87,8 @@ Primary artifacts:
 | Sub-agent orchestration | ✅ |
 | Todo tracking | ✅ |
 | Notebook editing | ✅ |
-| RUNE.md / project memory | ✅ |
-| Config file hierarchy (.rune.json) | ✅ |
+| CLAUDE.md / project memory | ✅ |
+| Config file hierarchy (.claude.json) | ✅ |
 | Permission system | ✅ |
 | MCP server lifecycle | ✅ |
 | Session persistence + resume | ✅ |
@@ -115,7 +115,7 @@ Short names resolve to the latest model versions:
 ## CLI Flags
 
 ```
-rune [OPTIONS] [COMMAND]
+claw [OPTIONS] [COMMAND]
 
 Options:
   --model MODEL                    Override the active model
@@ -155,7 +155,7 @@ Tab completion expands slash commands, model aliases, permission modes, and rece
 | `/model [name]` | Show or switch model |
 | `/permissions` | Show or switch permission mode |
 | `/config [section]` | Show config (env, hooks, model) |
-| `/memory` | Show RUNE.md contents |
+| `/memory` | Show CLAUDE.md contents |
 | `/diff` | Show git diff |
 | `/export [path]` | Export conversation |
 | `/resume [id]` | Resume a saved conversation |
@@ -177,7 +177,7 @@ rust/
     ├── mock-anthropic-service/ # Deterministic local Anthropic-compatible mock
     ├── plugins/            # Plugin registry and hook wiring primitives
     ├── runtime/            # Session, config, permissions, MCP, prompts
-    ├── rusty-claude-cli/   # Main CLI binary (`rune`)
+    ├── rusty-claude-cli/   # Main CLI binary (`claw`)
     ├── telemetry/          # Session tracing and usage telemetry types
     └── tools/              # Built-in tool implementations
 ```
@@ -198,7 +198,7 @@ rust/
 
 - **~20K lines** of Rust
 - **9 crates** in workspace
-- **Binary name:** `rune`
+- **Binary name:** `claw`
 - **Default model:** `claude-opus-4-6`
 - **Default permissions:** `danger-full-access`
 
