@@ -70,12 +70,12 @@ fn upstream_repo_candidates(primary_repo_root: &Path) -> Vec<PathBuf> {
     }
 
     for ancestor in primary_repo_root.ancestors().take(4) {
-        candidates.push(ancestor.join("rune"));
         candidates.push(ancestor.join("rune-code"));
+        candidates.push(ancestor.join("rune"));
     }
 
-    candidates.push(primary_repo_root.join("reference-source").join("rune"));
-    candidates.push(primary_repo_root.join("vendor").join("rune"));
+    candidates.push(primary_repo_root.join("reference-source").join("rune-code"));
+    candidates.push(primary_repo_root.join("vendor").join("rune-code"));
 
     let mut deduped = Vec::new();
     for candidate in candidates {

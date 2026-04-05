@@ -472,11 +472,11 @@ fn base_cache_root() -> PathBuf {
     }
     if let Some(home) = std::env::var_os("HOME") {
         return PathBuf::from(home)
-            .join(".claude")
+            .join(".rune")
             .join("cache")
             .join("prompt-cache");
     }
-    std::env::temp_dir().join("claude-prompt-cache")
+    std::env::temp_dir().join("rune-prompt-cache")
 }
 
 fn now_unix_secs() -> u64 {

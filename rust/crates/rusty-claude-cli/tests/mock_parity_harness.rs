@@ -13,7 +13,6 @@ use serde_json::{json, Value};
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[test]
-#[ignore = "requires mock server fix: CLI sends 401 to real API instead of mock (pre-existing issue)"]
 #[allow(clippy::too_many_lines)]
 fn clean_env_cli_reaches_mock_anthropic_service_across_scripted_parity_scenarios() {
     let manifest_entries = load_scenario_manifest();

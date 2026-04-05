@@ -2596,7 +2596,7 @@ fn build_http_client() -> Result<Client, String> {
     Client::builder()
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::limited(10))
-        .user_agent("rune-tools/0.1")
+        .user_agent("rune-rust-tools/0.1")
         .build()
         .map_err(|error| error.to_string())
 }
@@ -2966,7 +2966,7 @@ fn todo_store_path() -> Result<std::path::PathBuf, String> {
         return Ok(std::path::PathBuf::from(path));
     }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
-    Ok(cwd.join(".rune-todos.json"))
+    Ok(cwd.join(".runed-todos.json"))
 }
 
 fn resolve_skill_path(skill: &str) -> Result<std::path::PathBuf, String> {
@@ -3218,7 +3218,7 @@ fn allowed_tools_for_subagent(subagent_type: &str) -> BTreeSet<String> {
             "SendUserMessage",
             "PowerShell",
         ],
-        "claw-guide" => vec![
+        "rune-guide" => vec![
             "read_file",
             "glob_search",
             "grep_search",
@@ -3821,9 +3821,9 @@ fn agent_store_dir() -> Result<std::path::PathBuf, String> {
     }
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     if let Some(workspace_root) = cwd.ancestors().nth(2) {
-        return Ok(workspace_root.join(".rune-agents"));
+        return Ok(workspace_root.join(".runed-agents"));
     }
-    Ok(cwd.join(".rune-agents"))
+    Ok(cwd.join(".runed-agents"))
 }
 
 fn make_agent_id() -> String {
@@ -3864,7 +3864,7 @@ fn normalize_subagent_type(subagent_type: Option<&str>) -> String {
         "verification" | "verificationagent" | "verify" | "verifier" => {
             String::from("Verification")
         }
-        "clawguide" | "clawguideagent" | "guide" => String::from("claw-guide"),
+        "runeguide" | "runeguideagent" | "guide" => String::from("rune-guide"),
         "statusline" | "statuslinesetup" => String::from("statusline-setup"),
         _ => trimmed.to_string(),
     }
@@ -4557,16 +4557,16 @@ fn config_file_for_scope(scope: ConfigScope) -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|error| error.to_string())?;
     Ok(match scope {
         ConfigScope::Global => config_home_dir()?.join("settings.json"),
-        ConfigScope::Settings => cwd.join(".claw").join("settings.local.json"),
+        ConfigScope::Settings => cwd.join(".rune").join("settings.local.json"),
     })
 }
 
 fn config_home_dir() -> Result<PathBuf, String> {
-    if let Ok(path) = std::env::var("CLAW_CONFIG_HOME") {
+    if let Ok(path) = std::env::var("RUNE_CONFIG_HOME") {
         return Ok(PathBuf::from(path));
     }
     let home = std::env::var("HOME").map_err(|_| String::from("HOME is not set"))?;
-    Ok(PathBuf::from(home).join(".claw"))
+    Ok(PathBuf::from(home).join(".rune"))
 }
 
 fn read_json_object(path: &Path) -> Result<serde_json::Map<String, Value>, String> {
@@ -6634,19 +6634,19 @@ mod tests {
         ));
         let home = root.join("home");
         let cwd = root.join("cwd");
-        std::fs::create_dir_all(home.join(".claw")).expect("home dir");
-        std::fs::create_dir_all(cwd.join(".claw")).expect("cwd dir");
+        std::fs::create_dir_all(home.join(".rune")).expect("home dir");
+        std::fs::create_dir_all(cwd.join(".rune")).expect("cwd dir");
         std::fs::write(
-            home.join(".claw").join("settings.json"),
+            home.join(".rune").join("settings.json"),
             r#"{"verbose":false}"#,
         )
         .expect("write global settings");
 
         let original_home = std::env::var("HOME").ok();
-        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        let original_config_home = std::env::var("RUNE_CONFIG_HOME").ok();
         let original_dir = std::env::current_dir().expect("cwd");
         std::env::set_var("HOME", &home);
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("RUNE_CONFIG_HOME");
         std::env::set_current_dir(&cwd).expect("set cwd");
 
         let get = execute_tool("Config", &json!({"setting": "verbose"})).expect("get config");
@@ -6680,8 +6680,8 @@ mod tests {
             None => std::env::remove_var("HOME"),
         }
         match original_config_home {
-            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
-            None => std::env::remove_var("CLAW_CONFIG_HOME"),
+            Some(value) => std::env::set_var("RUNE_CONFIG_HOME", value),
+            None => std::env::remove_var("RUNE_CONFIG_HOME"),
         }
         let _ = std::fs::remove_dir_all(root);
     }
@@ -6700,19 +6700,19 @@ mod tests {
         ));
         let home = root.join("home");
         let cwd = root.join("cwd");
-        std::fs::create_dir_all(home.join(".claw")).expect("home dir");
-        std::fs::create_dir_all(cwd.join(".claw")).expect("cwd dir");
+        std::fs::create_dir_all(home.join(".rune")).expect("home dir");
+        std::fs::create_dir_all(cwd.join(".rune")).expect("cwd dir");
         std::fs::write(
-            cwd.join(".claw").join("settings.local.json"),
+            cwd.join(".rune").join("settings.local.json"),
             r#"{"permissions":{"defaultMode":"acceptEdits"}}"#,
         )
         .expect("write local settings");
 
         let original_home = std::env::var("HOME").ok();
-        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        let original_config_home = std::env::var("RUNE_CONFIG_HOME").ok();
         let original_dir = std::env::current_dir().expect("cwd");
         std::env::set_var("HOME", &home);
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("RUNE_CONFIG_HOME");
         std::env::set_current_dir(&cwd).expect("set cwd");
 
         let enter = execute_tool("EnterPlanMode", &json!({})).expect("enter plan mode");
@@ -6722,11 +6722,11 @@ mod tests {
         assert_eq!(enter_output["previousLocalMode"], "acceptEdits");
         assert_eq!(enter_output["currentLocalMode"], "plan");
 
-        let local_settings = std::fs::read_to_string(cwd.join(".claw").join("settings.local.json"))
+        let local_settings = std::fs::read_to_string(cwd.join(".rune").join("settings.local.json"))
             .expect("local settings after enter");
         assert!(local_settings.contains(r#""defaultMode": "plan""#));
         let state =
-            std::fs::read_to_string(cwd.join(".claw").join("tool-state").join("plan-mode.json"))
+            std::fs::read_to_string(cwd.join(".rune").join("tool-state").join("plan-mode.json"))
                 .expect("plan mode state");
         assert!(state.contains(r#""hadLocalOverride": true"#));
         assert!(state.contains(r#""previousLocalMode": "acceptEdits""#));
@@ -6738,11 +6738,11 @@ mod tests {
         assert_eq!(exit_output["previousLocalMode"], "acceptEdits");
         assert_eq!(exit_output["currentLocalMode"], "acceptEdits");
 
-        let local_settings = std::fs::read_to_string(cwd.join(".claw").join("settings.local.json"))
+        let local_settings = std::fs::read_to_string(cwd.join(".rune").join("settings.local.json"))
             .expect("local settings after exit");
         assert!(local_settings.contains(r#""defaultMode": "acceptEdits""#));
         assert!(!cwd
-            .join(".claw")
+            .join(".rune")
             .join("tool-state")
             .join("plan-mode.json")
             .exists());
@@ -6753,8 +6753,8 @@ mod tests {
             None => std::env::remove_var("HOME"),
         }
         match original_config_home {
-            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
-            None => std::env::remove_var("CLAW_CONFIG_HOME"),
+            Some(value) => std::env::set_var("RUNE_CONFIG_HOME", value),
+            None => std::env::remove_var("RUNE_CONFIG_HOME"),
         }
         let _ = std::fs::remove_dir_all(root);
     }
@@ -6773,14 +6773,14 @@ mod tests {
         ));
         let home = root.join("home");
         let cwd = root.join("cwd");
-        std::fs::create_dir_all(home.join(".claw")).expect("home dir");
-        std::fs::create_dir_all(cwd.join(".claw")).expect("cwd dir");
+        std::fs::create_dir_all(home.join(".rune")).expect("home dir");
+        std::fs::create_dir_all(cwd.join(".rune")).expect("cwd dir");
 
         let original_home = std::env::var("HOME").ok();
-        let original_config_home = std::env::var("CLAW_CONFIG_HOME").ok();
+        let original_config_home = std::env::var("RUNE_CONFIG_HOME").ok();
         let original_dir = std::env::current_dir().expect("cwd");
         std::env::set_var("HOME", &home);
-        std::env::remove_var("CLAW_CONFIG_HOME");
+        std::env::remove_var("RUNE_CONFIG_HOME");
         std::env::set_current_dir(&cwd).expect("set cwd");
 
         let enter = execute_tool("EnterPlanMode", &json!({})).expect("enter plan mode");
@@ -6793,7 +6793,7 @@ mod tests {
         assert_eq!(exit_output["changed"], true);
         assert_eq!(exit_output["currentLocalMode"], serde_json::Value::Null);
 
-        let local_settings = std::fs::read_to_string(cwd.join(".claw").join("settings.local.json"))
+        let local_settings = std::fs::read_to_string(cwd.join(".rune").join("settings.local.json"))
             .expect("local settings after exit");
         let local_settings_json: serde_json::Value =
             serde_json::from_str(&local_settings).expect("valid settings json");
@@ -6803,7 +6803,7 @@ mod tests {
             "permissions override should be removed on exit"
         );
         assert!(!cwd
-            .join(".claw")
+            .join(".rune")
             .join("tool-state")
             .join("plan-mode.json")
             .exists());
@@ -6814,8 +6814,8 @@ mod tests {
             None => std::env::remove_var("HOME"),
         }
         match original_config_home {
-            Some(value) => std::env::set_var("CLAW_CONFIG_HOME", value),
-            None => std::env::remove_var("CLAW_CONFIG_HOME"),
+            Some(value) => std::env::set_var("RUNE_CONFIG_HOME", value),
+            None => std::env::remove_var("RUNE_CONFIG_HOME"),
         }
         let _ = std::fs::remove_dir_all(root);
     }
@@ -7062,7 +7062,7 @@ printf 'pwsh:%s' "$1"
         let result = run_task_packet(TaskPacket {
             objective: "Ship packetized runtime task".to_string(),
             scope: "runtime/task system".to_string(),
-            repo: "rune-parity".to_string(),
+            repo: "rune-code".to_string(),
             branch_policy: "origin/main only".to_string(),
             acceptance_tests: vec![
                 "cargo build --workspace".to_string(),
@@ -7078,7 +7078,7 @@ printf 'pwsh:%s' "$1"
         assert_eq!(output["status"], "created");
         assert_eq!(output["prompt"], "Ship packetized runtime task");
         assert_eq!(output["description"], "runtime/task system");
-        assert_eq!(output["task_packet"]["repo"], "rune-parity");
+        assert_eq!(output["task_packet"]["repo"], "rune-code");
         assert_eq!(
             output["task_packet"]["acceptance_tests"][1],
             "cargo test --workspace"

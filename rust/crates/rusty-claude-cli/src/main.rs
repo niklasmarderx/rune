@@ -781,7 +781,7 @@ fn dump_manifests() {
 }
 
 fn print_bootstrap_plan() {
-    for phase in runtime::BootstrapPlan::claude_code_default().phases() {
+    for phase in runtime::BootstrapPlan::rune_default().phases() {
         println!("- {phase:?}");
     }
 }
@@ -796,7 +796,7 @@ fn default_oauth_config() -> OAuthConfig {
         scopes: vec![
             String::from("user:profile"),
             String::from("user:inference"),
-            String::from("user:sessions:claude_code"),
+            String::from("user:sessions:rune_code"),
         ],
     }
 }
@@ -2194,16 +2194,42 @@ impl LiveCli {
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
         let mut stdout = io::stdout();
 
-        // Animated spinner in background thread
+        // Animated spinner with rotating creative messages
         let stop_spinner = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop_flag = stop_spinner.clone();
         let spinner_handle = std::thread::spawn(move || {
+            const THINKING_MESSAGES: &[&str] = &[
+                "ᚱ Thinking...",
+                "ᚱ Pondering the runes...",
+                "ᚱ Casting spells...",
+                "ᚱ Consulting the oracle...",
+                "ᚱ Weaving patterns...",
+                "ᚱ Channeling wisdom...",
+                "ᚱ Deciphering symbols...",
+                "ᚱ Forging a response...",
+                "ᚱ Tracing pathways...",
+                "ᚱ Summoning insight...",
+                "ᚱ Reading the stones...",
+                "ᚱ Aligning the stars...",
+            ];
+
             let mut spinner = Spinner::new();
             let theme = TerminalRenderer::new().color_theme().clone();
             let mut out = io::stdout();
+            let mut msg_index: usize = 0;
+            let mut ticks_on_current: u32 = 0;
+            // Switch message every ~2.4 seconds (30 ticks × 80ms)
+            const TICKS_PER_MESSAGE: u32 = 30;
+
             while !stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
-                let _ = spinner.tick("ᚱ Thinking...", &theme, &mut out);
+                let msg = THINKING_MESSAGES[msg_index % THINKING_MESSAGES.len()];
+                let _ = spinner.tick(msg, &theme, &mut out);
                 std::thread::sleep(std::time::Duration::from_millis(80));
+                ticks_on_current += 1;
+                if ticks_on_current >= TICKS_PER_MESSAGE {
+                    ticks_on_current = 0;
+                    msg_index += 1;
+                }
             }
         });
 
@@ -5718,7 +5744,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .expect("time should be after epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("rusty-claude-cli-{nanos}"))
+        std::env::temp_dir().join(format!("rune-cli-{nanos}"))
     }
 
     fn git(args: &[&str], cwd: &Path) {
@@ -6986,7 +7012,7 @@ UU conflicted.rs",
             .duration_since(std::time::UNIX_EPOCH)
             .expect("system time should be after epoch")
             .as_nanos();
-        std::env::temp_dir().join(format!("claw-cli-{label}-{nanos}"))
+        std::env::temp_dir().join(format!("rune-cli-{label}-{nanos}"))
     }
 
     #[test]

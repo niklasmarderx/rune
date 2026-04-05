@@ -28,7 +28,7 @@ fn resumed_binary_accepts_slash_commands_with_arguments() {
         .expect("session should persist");
 
     // when
-    let output = run_claw(
+    let output = run_rune(
         &temp_dir,
         &[
             "--resume",
@@ -86,7 +86,7 @@ fn status_command_applies_cli_flags_end_to_end() {
     fs::create_dir_all(&temp_dir).expect("temp dir should exist");
 
     // when
-    let output = run_claw(
+    let output = run_rune(
         &temp_dir,
         &[
             "--model",
@@ -135,7 +135,7 @@ fn resumed_config_command_loads_settings_files_end_to_end() {
     .expect("local config should write");
 
     // when
-    let output = run_claw_with_env(
+    let output = run_rune_with_env(
         &project_dir,
         &[
             "--resume",
@@ -205,7 +205,7 @@ fn resume_latest_restores_the_most_recent_managed_session() {
         .expect("newer session should persist");
 
     // when
-    let output = run_claw(&project_dir, &["--resume", "latest", "/status"]);
+    let output = run_rune(&project_dir, &["--resume", "latest", "/status"]);
 
     // then
     assert!(
@@ -221,11 +221,11 @@ fn resume_latest_restores_the_most_recent_managed_session() {
     assert!(stdout.contains(newer_path.to_str().expect("utf8 path")));
 }
 
-fn run_claw(current_dir: &Path, args: &[&str]) -> Output {
-    run_claw_with_env(current_dir, args, &[])
+fn run_rune(current_dir: &Path, args: &[&str]) -> Output {
+    run_rune_with_env(current_dir, args, &[])
 }
 
-fn run_claw_with_env(current_dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
+fn run_rune_with_env(current_dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_rune"));
     command.current_dir(current_dir).args(args);
     for (key, value) in envs {

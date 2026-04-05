@@ -95,7 +95,7 @@ This plan covers a comprehensive analysis of the current terminal user interface
 | Task | Description | Effort |
 |---|---|---|
 | 2.1 | **Live markdown rendering** — Instead of raw text streaming, buffer text deltas and incrementally render Markdown as it arrives (heading detection, bold/italic, inline code). The existing `TerminalRenderer::render_markdown` can be adapted for incremental use | L |
-| 2.2 | **Thinking indicator** — When extended thinking/reasoning is active, show a distinct animated indicator (e.g., `🧠 Reasoning...` with pulsing dots or a different spinner) instead of the generic `ᚱ Thinking...` | S |
+| 2.2 | **Thinking indicator** — When extended thinking/reasoning is active, show a distinct animated indicator (e.g., `🧠 Reasoning...` with pulsing dots or a different spinner) instead of the generic `🦀 Thinking...` | S |
 | 2.3 | **Streaming progress bar** — Add an optional horizontal progress indicator below the spinner showing approximate completion (based on max_tokens vs. output_tokens so far) | M |
 | 2.4 | **Remove artificial stream delay** — The current `stream_markdown` sleeps 8ms per chunk. For tool results this is fine, but for the main response stream it should be immediate or configurable | S |
 

@@ -1,4 +1,4 @@
-//! Core runtime primitives for the `claw` CLI and supporting crates.
+//! Core runtime primitives for the `rune` CLI and supporting crates.
 //!
 //! This crate owns session persistence, permission evaluation, prompt assembly,
 //! MCP plumbing, tool-facing file operations, and the core conversation loop
@@ -54,7 +54,7 @@ pub use config::{
     McpServerConfig, McpStdioServerConfig, McpTransport, McpWebSocketServerConfig, OAuthConfig,
     ResolvedPermissionMode, RuntimeConfig, RuntimeFeatureConfig, RuntimeHookConfig,
     RuntimePermissionRuleConfig, RuntimePluginConfig, ScopedMcpServerConfig,
-    CLAW_SETTINGS_SCHEMA_NAME,
+    RUNE_SETTINGS_SCHEMA_NAME,
 };
 pub use conversation::{
     auto_compaction_threshold_from_env, ApiClient, ApiRequest, AssistantEvent, AutoCompactionEvent,

@@ -1955,20 +1955,20 @@ pub struct PluginsCommandResult {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum DefinitionSource {
     ProjectCodex,
-    ProjectClaude,
+    ProjectRune,
     UserCodexHome,
     UserCodex,
-    UserClaude,
+    UserRune,
 }
 
 impl DefinitionSource {
     fn label(self) -> &'static str {
         match self {
             Self::ProjectCodex => "Project (.codex)",
-            Self::ProjectClaude => "Project (.rune)",
+            Self::ProjectRune => "Project (.rune)",
             Self::UserCodexHome => "User ($CODEX_HOME)",
             Self::UserCodex => "User (~/.codex)",
-            Self::UserClaude => "User (~/.rune)",
+            Self::UserRune => "User (~/.rune)",
         }
     }
 }
@@ -2280,7 +2280,7 @@ fn discover_definition_roots(cwd: &Path, leaf: &str) -> Vec<(DefinitionSource, P
         );
         push_unique_root(
             &mut roots,
-            DefinitionSource::ProjectClaude,
+            DefinitionSource::ProjectRune,
             ancestor.join(".rune").join(leaf),
         );
     }
@@ -2302,7 +2302,7 @@ fn discover_definition_roots(cwd: &Path, leaf: &str) -> Vec<(DefinitionSource, P
         );
         push_unique_root(
             &mut roots,
-            DefinitionSource::UserClaude,
+            DefinitionSource::UserRune,
             home.join(".rune").join(leaf),
         );
     }
@@ -2322,7 +2322,7 @@ fn discover_skill_roots(cwd: &Path) -> Vec<SkillRoot> {
         );
         push_unique_skill_root(
             &mut roots,
-            DefinitionSource::ProjectClaude,
+            DefinitionSource::ProjectRune,
             ancestor.join(".rune").join("skills"),
             SkillOrigin::SkillsDir,
         );
@@ -2334,7 +2334,7 @@ fn discover_skill_roots(cwd: &Path) -> Vec<SkillRoot> {
         );
         push_unique_skill_root(
             &mut roots,
-            DefinitionSource::ProjectClaude,
+            DefinitionSource::ProjectRune,
             ancestor.join(".rune").join("commands"),
             SkillOrigin::LegacyCommandsDir,
         );
@@ -2372,13 +2372,13 @@ fn discover_skill_roots(cwd: &Path) -> Vec<SkillRoot> {
         );
         push_unique_skill_root(
             &mut roots,
-            DefinitionSource::UserClaude,
+            DefinitionSource::UserRune,
             home.join(".rune").join("skills"),
             SkillOrigin::SkillsDir,
         );
         push_unique_skill_root(
             &mut roots,
-            DefinitionSource::UserClaude,
+            DefinitionSource::UserRune,
             home.join(".rune").join("commands"),
             SkillOrigin::LegacyCommandsDir,
         );
@@ -2814,10 +2814,10 @@ fn render_agents_report(agents: &[AgentSummary]) -> String {
 
     for source in [
         DefinitionSource::ProjectCodex,
-        DefinitionSource::ProjectClaude,
+        DefinitionSource::ProjectRune,
         DefinitionSource::UserCodexHome,
         DefinitionSource::UserCodex,
-        DefinitionSource::UserClaude,
+        DefinitionSource::UserRune,
     ] {
         let group = agents
             .iter()
@@ -2872,10 +2872,10 @@ fn render_skills_report(skills: &[SkillSummary]) -> String {
 
     for source in [
         DefinitionSource::ProjectCodex,
-        DefinitionSource::ProjectClaude,
+        DefinitionSource::ProjectRune,
         DefinitionSource::UserCodexHome,
         DefinitionSource::UserCodex,
-        DefinitionSource::UserClaude,
+        DefinitionSource::UserRune,
     ] {
         let group = skills
             .iter()
@@ -3957,7 +3957,7 @@ mod tests {
                 origin: SkillOrigin::SkillsDir,
             },
             SkillRoot {
-                source: DefinitionSource::ProjectClaude,
+                source: DefinitionSource::ProjectRune,
                 path: project_commands,
                 origin: SkillOrigin::LegacyCommandsDir,
             },

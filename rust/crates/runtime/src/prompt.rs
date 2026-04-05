@@ -698,7 +698,7 @@ mod tests {
         ensure_valid_cwd();
         let previous = std::env::current_dir().expect("cwd");
         let original_home = std::env::var("HOME").ok();
-        let original_claw_home = std::env::var("RUNE_CONFIG_HOME").ok();
+        let original_rune_home = std::env::var("RUNE_CONFIG_HOME").ok();
         std::env::set_var("HOME", &root);
         std::env::set_var("RUNE_CONFIG_HOME", root.join("missing-home"));
         std::env::set_current_dir(&root).expect("change cwd");
@@ -715,7 +715,7 @@ mod tests {
         } else {
             std::env::remove_var("HOME");
         }
-        if let Some(value) = original_claw_home {
+        if let Some(value) = original_rune_home {
             std::env::set_var("RUNE_CONFIG_HOME", value);
         } else {
             std::env::remove_var("RUNE_CONFIG_HOME");
@@ -727,7 +727,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_claude_code_style_sections_with_project_context() {
+    fn renders_rune_style_sections_with_project_context() {
         let root = temp_dir();
         fs::create_dir_all(root.join(".rune")).expect("rune dir");
         fs::write(root.join("RUNE.md"), "Project rules").expect("write RUNE.md");
