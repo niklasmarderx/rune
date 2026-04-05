@@ -2246,7 +2246,7 @@ impl LiveCli {
                 self.replace_runtime(runtime)?;
                 let mut spinner = Spinner::new();
                 spinner.finish(
-                    "✨ Done",
+                    "Done",
                     TerminalRenderer::new().color_theme(),
                     &mut stdout,
                 )?;
@@ -2264,7 +2264,7 @@ impl LiveCli {
                 runtime.shutdown_plugins()?;
                 let mut spinner = Spinner::new();
                 spinner.fail(
-                    "❌ Request failed",
+                    "Request failed",
                     TerminalRenderer::new().color_theme(),
                     &mut stdout,
                 )?;
@@ -4286,7 +4286,7 @@ fn format_internal_prompt_progress_line(
             snapshot.command_label
         ),
         InternalPromptProgressEvent::Complete => format!(
-            "✔ {} status · completed · {elapsed_seconds}s elapsed · {} steps total",
+            "{}  status · completed · {elapsed_seconds}s elapsed · {} steps total",
             snapshot.command_label, snapshot.step
         ),
         InternalPromptProgressEvent::Failed => format!(
