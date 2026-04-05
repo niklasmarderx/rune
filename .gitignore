@@ -1,0 +1,16 @@
+__pycache__/
+archive/
+.omx/
+.clawd-agents/
+# Claude Code local artifacts
+.claude/settings.local.json
+.claude/sessions/
+# Rune session artifacts
+.rune/sessions/
+# Claw legacy (migration)
+.claw/sessions/
+# macOS metadata
+._*
+**/._*
+# Build artifacts
+rust/target/
