@@ -2195,7 +2195,7 @@ impl LiveCli {
         let mut spinner = Spinner::new();
         let mut stdout = io::stdout();
         spinner.tick(
-            "🦀 Thinking...",
+            "ᚱ Thinking...",
             TerminalRenderer::new().color_theme(),
             &mut stdout,
         )?;
