@@ -4598,6 +4598,7 @@ impl ApiClient for AnthropicRuntimeClient {
             let mut events = Vec::new();
             let mut pending_tool: Option<(String, String, String)> = None;
             let mut saw_stop = false;
+            let mut thinking_text = String::new();
 
             while let Some(event) = stream
                 .next_event()
@@ -4638,8 +4639,10 @@ impl ApiClient for AnthropicRuntimeClient {
                                 input.push_str(&partial_json);
                             }
                         }
-                        ContentBlockDelta::ThinkingDelta { .. }
-                        | ContentBlockDelta::SignatureDelta { .. } => {}
+                        ContentBlockDelta::ThinkingDelta { thinking } => {
+                            thinking_text.push_str(&thinking);
+                        }
+                        ContentBlockDelta::SignatureDelta { .. } => {}
                     },
                     ApiStreamEvent::ContentBlockStop(_) => {
                         if let Some(rendered) = markdown_stream.flush(&renderer) {
@@ -4675,6 +4678,20 @@ impl ApiClient for AnthropicRuntimeClient {
 
             push_prompt_cache_record(&self.client, &mut events);
 
+            // If the stream produced only thinking content (extended thinking) but no
+            // visible text or tool calls, promote the thinking text to a TextDelta so
+            // the conversation loop sees actual content instead of crashing.
+            let has_content = events.iter().any(|event| {
+                matches!(event, AssistantEvent::TextDelta(text) if !text.is_empty())
+                    || matches!(event, AssistantEvent::ToolUse { .. })
+            });
+            if !has_content && !thinking_text.is_empty() {
+                events.push(AssistantEvent::TextDelta(thinking_text));
+                if !saw_stop {
+                    events.push(AssistantEvent::MessageStop);
+                }
+            }
+
             if !saw_stop
                 && events.iter().any(|event| {
                     matches!(event, AssistantEvent::TextDelta(text) if !text.is_empty())
@@ -4691,17 +4708,40 @@ impl ApiClient for AnthropicRuntimeClient {
                 return Ok(events);
             }
 
-            let response = self
+            // Streaming produced no usable content. Retry once with a non-streaming
+            // request before giving up.
+            let non_stream_result = self
                 .client
                 .send_message(&MessageRequest {
                     stream: false,
                     ..message_request.clone()
                 })
-                .await
-                .map_err(|error| RuntimeError::new(error.to_string()))?;
-            let mut events = response_to_events(response, out)?;
-            push_prompt_cache_record(&self.client, &mut events);
-            Ok(events)
+                .await;
+
+            match non_stream_result {
+                Ok(response) => {
+                    let mut events = response_to_events(response, out)?;
+                    push_prompt_cache_record(&self.client, &mut events);
+                    if events
+                        .iter()
+                        .any(|event| matches!(event, AssistantEvent::MessageStop))
+                    {
+                        Ok(events)
+                    } else {
+                        // Non-streaming fallback also returned no content — surface a
+                        // user-friendly error instead of the opaque "no content" message.
+                        Err(RuntimeError::new(
+                            "The model returned an empty response. This can happen during \
+                             API overload or when the context is too large. Try again or \
+                             start a new session with /clear.",
+                        ))
+                    }
+                }
+                Err(error) => Err(RuntimeError::new(format!(
+                    "Stream was empty and non-streaming retry also failed: {error}. \
+                     Try again or start a new session with /clear.",
+                ))),
+            }
         })
     }
 }
@@ -5320,7 +5360,14 @@ fn push_output_block(
             };
             *pending_tool = Some((id, name, initial_input));
         }
-        OutputContentBlock::Thinking { .. } | OutputContentBlock::RedactedThinking { .. } => {}
+        OutputContentBlock::Thinking { thinking, .. } => {
+            // Preserve thinking content so the response is not empty when the model
+            // only produced a thinking block (extended thinking without visible text).
+            if !thinking.is_empty() {
+                events.push(AssistantEvent::TextDelta(thinking));
+            }
+        }
+        OutputContentBlock::RedactedThinking { .. } => {}
     }
     Ok(())
 }
@@ -7344,7 +7391,7 @@ UU conflicted.rs",
     }
 
     #[test]
-    fn response_to_events_ignores_thinking_blocks() {
+    fn response_to_events_preserves_thinking_blocks_as_text() {
         let mut out = Vec::new();
         let events = response_to_events(
             MessageResponse {
@@ -7375,11 +7422,16 @@ UU conflicted.rs",
         )
         .expect("response conversion should succeed");
 
+        // Thinking content is now preserved as a TextDelta so that responses
+        // containing only thinking blocks are not treated as empty.
         assert!(matches!(
             &events[0],
+            AssistantEvent::TextDelta(text) if text == "step 1"
+        ));
+        assert!(matches!(
+            &events[1],
             AssistantEvent::TextDelta(text) if text == "Final answer"
         ));
-        assert!(!String::from_utf8(out).expect("utf8").contains("step 1"));
     }
 
     #[test]

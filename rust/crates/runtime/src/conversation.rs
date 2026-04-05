@@ -704,7 +704,11 @@ fn build_assistant_message(
         ));
     }
     if blocks.is_empty() {
-        return Err(RuntimeError::new("assistant stream produced no content"));
+        return Err(RuntimeError::new(
+            "The model returned an empty response. This can happen during API \
+             overload or when the context is too large. Try again or start a \
+             new session with /clear.",
+        ));
     }
 
     Ok((
@@ -1597,9 +1601,7 @@ mod tests {
             build_assistant_message(events).expect_err("assistant messages should require content");
 
         // then
-        assert!(error
-            .to_string()
-            .contains("assistant stream produced no content"));
+        assert!(error.to_string().contains("empty response"));
     }
 
     #[test]
