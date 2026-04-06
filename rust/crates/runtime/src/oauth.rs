@@ -475,7 +475,7 @@ mod tests {
         }
     }
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    fn env_lock() -> crate::EnvLockGuard {
         crate::test_env_lock()
     }
 

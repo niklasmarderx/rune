@@ -1,3 +1,5 @@
+use std::fmt::Write as _;
+
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -19,13 +21,18 @@ pub fn draw(frame: &mut Frame, app: &App) {
         (app.tool_activity.len() as u16 + 2).min(7)
     };
 
+    // Dynamic input height: 3 lines base, grows with newlines (up to 8).
+    #[allow(clippy::cast_possible_truncation)]
+    let input_lines = app.input_buffer.lines().count().max(1) as u16;
+    let input_height = (input_lines + 2).min(8); // +2 for borders
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),           // status bar
-            Constraint::Min(5),              // conversation
-            Constraint::Length(tool_height), // tool activity
-            Constraint::Length(3),           // input bar
+            Constraint::Length(1),            // status bar
+            Constraint::Min(5),               // conversation
+            Constraint::Length(tool_height),  // tool activity
+            Constraint::Length(input_height), // input bar
         ])
         .split(frame.area());
 
@@ -146,7 +153,8 @@ fn render_conversation(frame: &mut Frame, area: Rect, app: &App) {
     let total_lines = lines.len() as u16;
     let visible = area.height.saturating_sub(2); // account for borders
     let max_scroll = total_lines.saturating_sub(visible);
-    let scroll = app.scroll_offset.min(max_scroll);
+    // scroll_up=0 means follow tail (show bottom), scroll_up>0 means scrolled up.
+    let scroll = max_scroll.saturating_sub(app.scroll_up);
 
     let conversation = Paragraph::new(lines)
         .block(
@@ -186,7 +194,22 @@ fn render_tool_panel(frame: &mut Frame, area: Rect, app: &App) {
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
     let display_text = match app.mode {
-        AppMode::Input => format!(" > {}", app.input_buffer),
+        AppMode::Input => {
+            // Multi-line: prefix first line with "> ", indent continuation lines.
+            let mut result = String::new();
+            for (i, line) in app.input_buffer.split('\n').enumerate() {
+                if i == 0 {
+                    let _ = write!(result, " > {line}");
+                } else {
+                    let _ = write!(result, "\n   {line}");
+                }
+            }
+            if result.is_empty() {
+                " > ".to_string()
+            } else {
+                result
+            }
+        }
         AppMode::Waiting => {
             let spinner = SPINNER_FRAMES[app.tick % SPINNER_FRAMES.len()];
             format!(" {spinner} Thinking... (Esc to cancel)")
@@ -205,9 +228,16 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
 
     // Set cursor position when in input mode.
     if app.mode == AppMode::Input {
+        // Find which line and column the cursor is on.
+        let before_cursor = &app.input_buffer[..app.input_cursor];
+        let cursor_line = before_cursor.matches('\n').count();
+        let last_newline = before_cursor.rfind('\n').map_or(0, |pos| pos + 1);
+        let col_in_line = app.input_cursor - last_newline;
+        // +1 for border, +3 for " > " prefix (or "   " on continuation lines)
         #[allow(clippy::cast_possible_truncation)]
-        let cursor_x = area.x + 4 + app.input_cursor as u16;
-        let cursor_y = area.y + 1;
+        let cursor_x = area.x + 1 + 3 + col_in_line as u16;
+        #[allow(clippy::cast_possible_truncation)]
+        let cursor_y = area.y + 1 + cursor_line as u16;
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 }

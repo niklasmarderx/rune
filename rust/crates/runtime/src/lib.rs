@@ -151,9 +151,30 @@ pub use worker_boot::{
 };
 
 #[cfg(test)]
-pub(crate) fn test_env_lock() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) struct EnvLockGuard {
+    _thread: std::sync::MutexGuard<'static, ()>,
+    _file: std::fs::File,
+}
+
+#[cfg(test)]
+pub(crate) fn test_env_lock() -> EnvLockGuard {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+    let thread_guard = LOCK
+        .get_or_init(|| std::sync::Mutex::new(()))
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+    let lock_path = std::env::temp_dir().join("rune-api-env-test.lock");
+    let file = std::fs::File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .expect("open env lock file");
+    file.lock().expect("acquire file lock");
+
+    EnvLockGuard {
+        _thread: thread_guard,
+        _file: file,
+    }
 }

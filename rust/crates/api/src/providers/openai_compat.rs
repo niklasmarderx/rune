@@ -1106,11 +1106,31 @@ mod tests {
         );
     }
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    fn env_lock() -> EnvLockGuard {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        let thread_guard = LOCK
+            .get_or_init(|| Mutex::new(()))
             .lock()
-            .expect("env lock")
+            .expect("env lock");
+
+        let lock_path = std::env::temp_dir().join("rune-api-env-test.lock");
+        let file = std::fs::File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .expect("open env lock file");
+        file.lock().expect("acquire file lock");
+
+        EnvLockGuard {
+            _thread: thread_guard,
+            _file: file,
+        }
+    }
+
+    struct EnvLockGuard {
+        _thread: std::sync::MutexGuard<'static, ()>,
+        _file: std::fs::File,
     }
 
     #[test]

@@ -55,7 +55,8 @@ pub struct App {
     pub input_buffer: String,
     pub input_cursor: usize,
     pub status: StatusBar,
-    pub scroll_offset: u16,
+    /// Lines scrolled UP from the bottom. 0 = following tail (auto-scroll).
+    pub scroll_up: u16,
     pub tick: usize,
     pub git_branch: String,
     quit: bool,
@@ -86,7 +87,7 @@ impl App {
                 turn_count: 0,
                 message_count: 0,
             },
-            scroll_offset: 0,
+            scroll_up: 0,
             tick: 0,
             git_branch,
             quit: false,
@@ -115,6 +116,8 @@ impl App {
             TuiEvent::Key(key) => self.handle_key(key),
             TuiEvent::TextDelta(text) => {
                 self.streaming_text.push_str(&text);
+                // Auto-scroll to bottom when new content arrives.
+                self.scroll_up = 0;
             }
             TuiEvent::ToolUseStarted { name } => {
                 self.tool_activity.push(ToolActivity {
@@ -225,7 +228,15 @@ impl App {
 
     fn handle_input_key(&mut self, key: KeyEvent) {
         match key.code {
-            KeyCode::Enter => self.submit_input(),
+            KeyCode::Enter => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    // Shift+Enter inserts a newline for multi-line input.
+                    self.input_buffer.insert(self.input_cursor, '\n');
+                    self.input_cursor += 1;
+                } else {
+                    self.submit_input();
+                }
+            }
             KeyCode::Char(c) => {
                 self.input_buffer.insert(self.input_cursor, c);
                 self.input_cursor += c.len_utf8();
@@ -265,8 +276,8 @@ impl App {
             }
             KeyCode::Up => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
-                    // Shift+Up scrolls conversation.
-                    self.scroll_offset = self.scroll_offset.saturating_add(3);
+                    // Shift+Up scrolls conversation up (away from bottom).
+                    self.scroll_up = self.scroll_up.saturating_add(3);
                 } else if !self.input_history.is_empty() {
                     // Up navigates input history.
                     let idx = match self.history_index {
@@ -280,7 +291,8 @@ impl App {
             }
             KeyCode::Down => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
-                    self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                    // Shift+Down scrolls conversation down (toward bottom).
+                    self.scroll_up = self.scroll_up.saturating_sub(3);
                 } else if let Some(idx) = self.history_index {
                     if idx + 1 < self.input_history.len() {
                         let next = idx + 1;
@@ -296,10 +308,10 @@ impl App {
                 }
             }
             KeyCode::PageUp => {
-                self.scroll_offset = self.scroll_offset.saturating_add(10);
+                self.scroll_up = self.scroll_up.saturating_add(10);
             }
             KeyCode::PageDown => {
-                self.scroll_offset = self.scroll_offset.saturating_sub(10);
+                self.scroll_up = self.scroll_up.saturating_sub(10);
             }
             KeyCode::Esc => {
                 self.quit = true;
@@ -331,7 +343,7 @@ impl App {
                 self.streaming_text.clear();
                 self.input_buffer.clear();
                 self.input_cursor = 0;
-                self.scroll_offset = 0;
+                self.scroll_up = 0;
                 return;
             }
             "/help" => {
@@ -389,7 +401,7 @@ impl App {
         });
         self.input_buffer.clear();
         self.input_cursor = 0;
-        self.scroll_offset = 0;
+        self.scroll_up = 0;
         self.mode = AppMode::Waiting;
         self.turn_start = Some(Instant::now());
 

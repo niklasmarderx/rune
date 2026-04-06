@@ -53,11 +53,34 @@ fn read_xai_base_url_prefers_env_override() {
     assert_eq!(read_xai_base_url(), "https://example.xai.test/v1");
 }
 
-fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+/// Cross-process lock that serialises all env-mutating tests across test
+/// binaries.  Each binary also uses an in-process mutex so concurrent test
+/// threads within the same binary are serialised too.
+fn env_lock() -> EnvLockGuard {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
+    let thread_guard = LOCK
+        .get_or_init(|| Mutex::new(()))
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+    let lock_path = std::env::temp_dir().join("rune-api-env-test.lock");
+    let file = std::fs::File::options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock_path)
+        .expect("open env lock file");
+    file.lock().expect("acquire file lock");
+
+    EnvLockGuard {
+        _thread: thread_guard,
+        _file: file,
+    }
+}
+
+struct EnvLockGuard {
+    _thread: std::sync::MutexGuard<'static, ()>,
+    _file: std::fs::File,
 }
 
 struct EnvVarGuard {

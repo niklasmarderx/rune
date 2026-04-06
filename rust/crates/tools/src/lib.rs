@@ -4970,9 +4970,31 @@ mod tests {
     };
     use serde_json::json;
 
-    fn env_lock() -> &'static Mutex<()> {
+    fn env_lock() -> EnvLockGuard {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
+        let thread_guard = LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let lock_path = std::env::temp_dir().join("rune-api-env-test.lock");
+        let file = std::fs::File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .expect("open env lock file");
+        file.lock().expect("acquire file lock");
+
+        EnvLockGuard {
+            _thread: thread_guard,
+            _file: file,
+        }
+    }
+
+    struct EnvLockGuard {
+        _thread: std::sync::MutexGuard<'static, ()>,
+        _file: std::fs::File,
     }
 
     fn temp_path(name: &str) -> PathBuf {
@@ -5449,9 +5471,7 @@ mod tests {
 
     #[test]
     fn web_search_handles_generic_links_and_invalid_base_url() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let server = TestServer::spawn(Arc::new(|request_line: &str| {
             assert!(request_line.contains("GET /fallback?q=generic+links "));
             HttpResponse::html(
@@ -5557,9 +5577,7 @@ mod tests {
 
     #[test]
     fn todo_write_persists_and_returns_previous_state() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let path = temp_path("todos.json");
         std::env::set_var("RUNE_TODO_STORE", &path);
 
@@ -5604,9 +5622,7 @@ mod tests {
 
     #[test]
     fn todo_write_rejects_invalid_payloads_and_sets_verification_nudge() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let path = temp_path("todos-errors.json");
         std::env::set_var("RUNE_TODO_STORE", &path);
 
@@ -5657,7 +5673,7 @@ mod tests {
 
     #[test]
     fn skill_loads_local_skill_prompt() {
-        let _guard = env_lock().lock().expect("env lock should acquire");
+        let _guard = env_lock();
         let home = temp_path("skills-home");
         let skill_dir = home.join(".agents").join("skills").join("help");
         fs::create_dir_all(&skill_dir).expect("skill dir should exist");
@@ -5747,9 +5763,7 @@ mod tests {
 
     #[test]
     fn agent_persists_handoff_metadata() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let dir = temp_path("agent-store");
         std::env::set_var("RUNE_AGENT_STORE", &dir);
         let captured = Arc::new(Mutex::new(None::<AgentJob>));
@@ -5830,9 +5844,7 @@ mod tests {
     #[test]
     #[allow(clippy::too_many_lines)]
     fn agent_fake_runner_can_persist_completion_and_failure() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let dir = temp_path("agent-runner");
         std::env::set_var("RUNE_AGENT_STORE", &dir);
 
@@ -6084,9 +6096,7 @@ mod tests {
 
     #[test]
     fn subagent_runtime_executes_tool_loop_with_isolated_session() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let path = temp_path("subagent-input.txt");
         std::fs::write(&path, "hello from child").expect("write input file");
 
@@ -6315,9 +6325,7 @@ mod tests {
 
     #[test]
     fn bash_workspace_tests_are_blocked_when_branch_is_behind_main() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = temp_path("workspace-test-preflight");
         let original_dir = std::env::current_dir().expect("cwd");
         init_git_repo(&root);
@@ -6365,9 +6373,7 @@ mod tests {
 
     #[test]
     fn bash_targeted_tests_skip_branch_preflight() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = temp_path("targeted-test-no-preflight");
         let original_dir = std::env::current_dir().expect("cwd");
         init_git_repo(&root);
@@ -6399,9 +6405,7 @@ mod tests {
 
     #[test]
     fn file_tools_cover_read_write_and_edit_behaviors() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = temp_path("fs-suite");
         fs::create_dir_all(&root).expect("create root");
         let original_dir = std::env::current_dir().expect("cwd");
@@ -6510,9 +6514,7 @@ mod tests {
 
     #[test]
     fn glob_and_grep_tools_cover_success_and_errors() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = temp_path("search-suite");
         fs::create_dir_all(root.join("nested")).expect("create root");
         let original_dir = std::env::current_dir().expect("cwd");
@@ -6640,9 +6642,7 @@ mod tests {
 
     #[test]
     fn config_reads_and_writes_supported_values() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = std::env::temp_dir().join(format!(
             "rune-config-{}",
             std::time::SystemTime::now()
@@ -6706,9 +6706,7 @@ mod tests {
 
     #[test]
     fn enter_and_exit_plan_mode_round_trip_existing_local_override() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = std::env::temp_dir().join(format!(
             "rune-plan-mode-{}",
             std::time::SystemTime::now()
@@ -6779,9 +6777,7 @@ mod tests {
 
     #[test]
     fn exit_plan_mode_clears_override_when_enter_created_it_from_empty_local_state() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = std::env::temp_dir().join(format!(
             "rune-plan-mode-empty-{}",
             std::time::SystemTime::now()
@@ -6901,9 +6897,7 @@ mod tests {
 
     #[test]
     fn powershell_runs_via_stub_shell() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let dir = std::env::temp_dir().join(format!(
             "rune-pwsh-bin-{}",
             std::time::SystemTime::now()
@@ -6957,9 +6951,7 @@ printf 'pwsh:%s' "$1"
 
     #[test]
     fn powershell_errors_when_shell_is_missing() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let original_path = std::env::var("PATH").unwrap_or_default();
         let empty_dir = std::env::temp_dir().join(format!(
             "rune-empty-bin-{}",
@@ -7037,9 +7029,7 @@ printf 'pwsh:%s' "$1"
 
     #[test]
     fn given_read_only_enforcer_when_read_file_then_not_permission_denied() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let root = temp_path("perm-read");
         fs::create_dir_all(&root).expect("create root");
         let file = root.join("readable.txt");
@@ -7071,9 +7061,7 @@ printf 'pwsh:%s' "$1"
 
     #[test]
     fn given_no_enforcer_when_bash_then_executes_normally() {
-        let _guard = env_lock()
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _guard = env_lock();
         let registry = super::GlobalToolRegistry::builtin();
         let result = registry
             .execute("bash", &json!({ "command": "printf 'ok'" }))
