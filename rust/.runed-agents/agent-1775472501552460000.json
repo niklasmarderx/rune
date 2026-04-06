@@ -1,0 +1,39 @@
+{
+  "agentId": "agent-1775472501552460000",
+  "name": "verify-the-branch",
+  "description": "Verify the branch",
+  "subagentType": "Explore",
+  "model": "claude-opus-4-6",
+  "status": "failed",
+  "outputFile": "/private/tmp/rune-check/rust/.runed-agents/agent-1775472501552460000.md",
+  "manifestFile": "/private/tmp/rune-check/rust/.runed-agents/agent-1775472501552460000.json",
+  "createdAt": "1775472501",
+  "startedAt": "1775472501",
+  "completedAt": "1775472501",
+  "laneEvents": [
+    {
+      "event": "lane.started",
+      "status": "running",
+      "emittedAt": "1775472501"
+    },
+    {
+      "event": "lane.blocked",
+      "status": "blocked",
+      "emittedAt": "1775472501",
+      "failureClass": "infra",
+      "detail": "missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"
+    },
+    {
+      "event": "lane.failed",
+      "status": "failed",
+      "emittedAt": "1775472501",
+      "failureClass": "infra",
+      "detail": "missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"
+    }
+  ],
+  "currentBlocker": {
+    "failureClass": "infra",
+    "detail": "missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"
+  },
+  "error": "missing Anthropic credentials; export ANTHROPIC_AUTH_TOKEN or ANTHROPIC_API_KEY before calling the Anthropic API"
+}
