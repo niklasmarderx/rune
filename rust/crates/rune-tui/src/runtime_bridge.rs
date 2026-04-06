@@ -244,7 +244,6 @@ impl MiniMcpState {
         serde_json::to_string_pretty(&result).map_err(|e| ToolError::new(e.to_string()))
     }
 
-    #[allow(dead_code)]
     pub fn shutdown(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.rt.block_on(self.manager.shutdown())?;
         Ok(())
@@ -257,7 +256,6 @@ impl ToolExecutor for TuiToolExecutor {
             .map_err(|e| ToolError::new(format!("invalid tool JSON: {e}")))?;
 
         let result = if self.tool_registry.has_runtime_tool(tool_name) {
-            // MCP tool
             let Some(mcp) = &mut self.mcp_state else {
                 return Err(ToolError::new("MCP not available"));
             };
@@ -293,120 +291,194 @@ impl ToolExecutor for TuiToolExecutor {
 }
 
 // ---------------------------------------------------------------------------
-// Runtime construction and turn execution
+// Persistent runtime — built once on a dedicated worker thread, reused across turns
 // ---------------------------------------------------------------------------
 
-/// Build the full runtime and execute one turn, sending events through `tx`.
-/// Called from a background `std::thread::spawn`.
-pub fn run_turn_background(input: &str, tx: &std::sync::mpsc::Sender<TuiEvent>) {
-    let result = build_and_run(input, tx);
-    let _ = tx.send(TuiEvent::TurnComplete(result));
+/// Holds everything needed to run multiple turns without rebuilding.
+struct PersistentRuntime {
+    runtime: ConversationRuntime<TuiApiClient, TuiToolExecutor>,
+    mcp_state: Option<Arc<Mutex<MiniMcpState>>>,
 }
 
-fn build_and_run(
-    input: &str,
-    tx: &std::sync::mpsc::Sender<TuiEvent>,
-) -> Result<runtime::TurnSummary, RuntimeError> {
-    let cwd = env::current_dir().map_err(|e| RuntimeError::new(e.to_string()))?;
-    let loader = ConfigLoader::default_for(&cwd);
-    let runtime_config = loader
-        .load()
-        .map_err(|e| RuntimeError::new(e.to_string()))?;
+impl PersistentRuntime {
+    /// Build the runtime from config. Called once at startup.
+    fn build(tx: &std::sync::mpsc::Sender<TuiEvent>) -> Result<Self, RuntimeError> {
+        let cwd = env::current_dir().map_err(|e| RuntimeError::new(e.to_string()))?;
+        let loader = ConfigLoader::default_for(&cwd);
+        let runtime_config = loader
+            .load()
+            .map_err(|e| RuntimeError::new(e.to_string()))?;
 
-    // Plugins
-    let plugin_manager_config =
-        plugins::PluginManagerConfig::new(loader.config_home().to_path_buf());
-    let plugin_manager = plugins::PluginManager::new(plugin_manager_config);
-    let plugin_registry = plugin_manager
-        .plugin_registry()
-        .map_err(|e| RuntimeError::new(e.to_string()))?;
-    let plugin_hooks = plugin_registry
-        .aggregated_hooks()
-        .map_err(|e| RuntimeError::new(e.to_string()))?;
-    let hook_config = runtime::RuntimeHookConfig::new(
-        plugin_hooks.pre_tool_use,
-        plugin_hooks.post_tool_use,
-        plugin_hooks.post_tool_use_failure,
-    );
-    let feature_config = runtime_config
-        .feature_config()
-        .clone()
-        .with_hooks(runtime_config.hooks().merged(&hook_config));
+        // Plugins
+        let plugin_manager_config =
+            plugins::PluginManagerConfig::new(loader.config_home().to_path_buf());
+        let plugin_manager = plugins::PluginManager::new(plugin_manager_config);
+        let plugin_registry = plugin_manager
+            .plugin_registry()
+            .map_err(|e| RuntimeError::new(e.to_string()))?;
+        let plugin_hooks = plugin_registry
+            .aggregated_hooks()
+            .map_err(|e| RuntimeError::new(e.to_string()))?;
+        let hook_config = runtime::RuntimeHookConfig::new(
+            plugin_hooks.pre_tool_use,
+            plugin_hooks.post_tool_use,
+            plugin_hooks.post_tool_use_failure,
+        );
+        let feature_config = runtime_config
+            .feature_config()
+            .clone()
+            .with_hooks(runtime_config.hooks().merged(&hook_config));
 
-    // MCP
-    let mut mcp_state_arc: Option<Arc<Mutex<MiniMcpState>>> = None;
-    let mut mcp_runtime_tools = Vec::new();
-    let mut mcp_manager = McpServerManager::from_runtime_config(&runtime_config);
-    if !mcp_manager.server_names().is_empty() {
-        let mcp_rt =
-            tokio::runtime::Runtime::new().map_err(|e| RuntimeError::new(e.to_string()))?;
-        let discovery = mcp_rt.block_on(mcp_manager.discover_tools_best_effort());
-        for tool in &discovery.tools {
-            mcp_runtime_tools.push(tools::RuntimeToolDefinition {
-                name: tool.qualified_name.clone(),
-                description: tool
-                    .tool
-                    .description
-                    .clone()
-                    .or_else(|| Some(format!("MCP tool `{}`", tool.qualified_name))),
-                input_schema: tool
-                    .tool
-                    .input_schema
-                    .clone()
-                    .unwrap_or_else(|| json!({ "type": "object", "additionalProperties": true })),
-                required_permission: PermissionMode::DangerFullAccess,
-            });
+        // MCP
+        let mut mcp_state_arc: Option<Arc<Mutex<MiniMcpState>>> = None;
+        let mut mcp_runtime_tools = Vec::new();
+        let mut mcp_manager = McpServerManager::from_runtime_config(&runtime_config);
+        if !mcp_manager.server_names().is_empty() {
+            let mcp_rt =
+                tokio::runtime::Runtime::new().map_err(|e| RuntimeError::new(e.to_string()))?;
+            let discovery = mcp_rt.block_on(mcp_manager.discover_tools_best_effort());
+            for tool in &discovery.tools {
+                mcp_runtime_tools.push(tools::RuntimeToolDefinition {
+                    name: tool.qualified_name.clone(),
+                    description: tool
+                        .tool
+                        .description
+                        .clone()
+                        .or_else(|| Some(format!("MCP tool `{}`", tool.qualified_name))),
+                    input_schema: tool.tool.input_schema.clone().unwrap_or_else(
+                        || json!({ "type": "object", "additionalProperties": true }),
+                    ),
+                    required_permission: PermissionMode::DangerFullAccess,
+                });
+            }
+            mcp_state_arc = Some(Arc::new(Mutex::new(MiniMcpState {
+                rt: mcp_rt,
+                manager: mcp_manager,
+            })));
         }
-        mcp_state_arc = Some(Arc::new(Mutex::new(MiniMcpState {
-            rt: mcp_rt,
-            manager: mcp_manager,
-        })));
-    }
 
-    // Tool registry
-    let tool_registry = GlobalToolRegistry::with_plugin_tools(
-        plugin_registry
-            .aggregated_tools()
-            .map_err(|e| RuntimeError::new(e.to_string()))?,
-    )
-    .map_err(|e| RuntimeError::new(e.clone()))?
-    .with_runtime_tools(mcp_runtime_tools)
-    .map_err(|e| RuntimeError::new(e.clone()))?;
+        // Tool registry
+        let tool_registry = GlobalToolRegistry::with_plugin_tools(
+            plugin_registry
+                .aggregated_tools()
+                .map_err(|e| RuntimeError::new(e.to_string()))?,
+        )
+        .map_err(|e| RuntimeError::new(e.clone()))?
+        .with_runtime_tools(mcp_runtime_tools)
+        .map_err(|e| RuntimeError::new(e.clone()))?;
 
-    // Permission policy
-    let mode = PermissionMode::DangerFullAccess;
-    let policy = tool_registry
-        .permission_specs(None)
-        .map_err(RuntimeError::new)?
-        .into_iter()
-        .fold(
-            PermissionPolicy::new(mode).with_permission_rules(feature_config.permission_rules()),
-            |p, (name, req)| p.with_tool_requirement(name, req),
+        // Permission policy
+        let mode = PermissionMode::DangerFullAccess;
+        let policy = tool_registry
+            .permission_specs(None)
+            .map_err(RuntimeError::new)?
+            .into_iter()
+            .fold(
+                PermissionPolicy::new(mode)
+                    .with_permission_rules(feature_config.permission_rules()),
+                |p, (name, req)| p.with_tool_requirement(name, req),
+            );
+
+        let session_id = "tui-session";
+        let model = "claude-opus-4-6".to_string();
+        let system_prompt = vec!["You are a helpful AI assistant.".to_string()];
+
+        let api_client =
+            TuiApiClient::new(session_id, model, true, tool_registry.clone(), tx.clone())
+                .map_err(|e| RuntimeError::new(e.to_string()))?;
+
+        let tool_executor = TuiToolExecutor {
+            tool_registry,
+            mcp_state: mcp_state_arc.clone(),
+            event_tx: tx.clone(),
+        };
+
+        let conversation_runtime = ConversationRuntime::new_with_features(
+            Session::new(),
+            api_client,
+            tool_executor,
+            policy,
+            system_prompt,
+            &feature_config,
         );
 
-    let session_id = "tui-session";
-    let model = "claude-opus-4-6".to_string();
-    let system_prompt = vec!["You are a helpful AI assistant.".to_string()];
+        Ok(Self {
+            runtime: conversation_runtime,
+            mcp_state: mcp_state_arc,
+        })
+    }
 
-    let api_client = TuiApiClient::new(session_id, model, true, tool_registry.clone(), tx.clone())
-        .map_err(|e| RuntimeError::new(e.to_string()))?;
+    fn run_turn(&mut self, input: &str) -> Result<runtime::TurnSummary, RuntimeError> {
+        self.runtime.run_turn(input, None)
+    }
 
-    let tool_executor = TuiToolExecutor {
-        tool_registry,
-        mcp_state: mcp_state_arc,
-        event_tx: tx.clone(),
-    };
+    fn message_count(&self) -> usize {
+        self.runtime.session().messages.len()
+    }
+}
 
-    let mut runtime = ConversationRuntime::new_with_features(
-        Session::new(),
-        api_client,
-        tool_executor,
-        policy,
-        system_prompt,
-        &feature_config,
-    );
+impl Drop for PersistentRuntime {
+    fn drop(&mut self) {
+        if let Some(mcp) = &self.mcp_state {
+            if let Ok(mut state) = mcp.lock() {
+                let _ = state.shutdown();
+            }
+        }
+    }
+}
 
-    runtime.run_turn(input, None)
+// ---------------------------------------------------------------------------
+// RuntimeWorker — owns PersistentRuntime on a dedicated thread
+// ---------------------------------------------------------------------------
+
+enum WorkerCommand {
+    RunTurn(String),
+    QueryMessageCount(std::sync::mpsc::Sender<usize>),
+}
+
+/// Handle to the runtime worker thread. Send commands, runtime stays on one thread.
+pub struct RuntimeWorker {
+    cmd_tx: std::sync::mpsc::Sender<WorkerCommand>,
+}
+
+impl RuntimeWorker {
+    /// Build the runtime on the current thread, then spawn a worker thread.
+    /// Returns an error if the runtime cannot be constructed.
+    pub fn start(event_tx: std::sync::mpsc::Sender<TuiEvent>) -> Result<Self, RuntimeError> {
+        // Build runtime on the main thread (before raw mode) so errors print normally.
+        let mut persistent = PersistentRuntime::build(&event_tx)?;
+
+        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<WorkerCommand>();
+
+        std::thread::spawn(move || {
+            while let Ok(cmd) = cmd_rx.recv() {
+                match cmd {
+                    WorkerCommand::RunTurn(input) => {
+                        let result = persistent.run_turn(&input);
+                        let _ = event_tx.send(TuiEvent::TurnComplete(result));
+                    }
+                    WorkerCommand::QueryMessageCount(reply) => {
+                        let _ = reply.send(persistent.message_count());
+                    }
+                }
+            }
+            // Channel closed — worker shuts down, PersistentRuntime drops (cleans up MCP).
+        });
+
+        Ok(Self { cmd_tx })
+    }
+
+    /// Submit a turn to be executed. Non-blocking; result arrives via `TuiEvent`.
+    pub fn submit_turn(&self, input: String) {
+        let _ = self.cmd_tx.send(WorkerCommand::RunTurn(input));
+    }
+
+    /// Query the current session message count (blocks briefly for reply).
+    pub fn message_count(&self) -> usize {
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        let _ = self.cmd_tx.send(WorkerCommand::QueryMessageCount(reply_tx));
+        reply_rx.recv().unwrap_or(0)
+    }
 }
 
 // ---------------------------------------------------------------------------

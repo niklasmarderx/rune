@@ -176,6 +176,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             permission_mode,
         } => run_repl(model, allowed_tools, permission_mode)?,
         CliAction::Help => print_help(),
+        CliAction::Tui => launch_tui()?,
     }
     Ok(())
 }
@@ -192,6 +193,24 @@ fn print_system_prompt(cwd: PathBuf, date: String) {
 
 fn print_version() {
     println!("{}", render_version_report());
+}
+
+fn launch_tui() -> Result<(), Box<dyn std::error::Error>> {
+    let exe_dir = std::env::current_exe()?
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_default();
+    let tui_bin = exe_dir.join("rune-tui");
+    if tui_bin.exists() {
+        let status = std::process::Command::new(&tui_bin).status()?;
+        if !status.success() {
+            std::process::exit(status.code().unwrap_or(1));
+        }
+    } else {
+        eprintln!("rune-tui binary not found. Build it with:");
+        eprintln!("  cargo install --path crates/rune-tui");
+    }
+    Ok(())
 }
 
 #[cfg(test)]

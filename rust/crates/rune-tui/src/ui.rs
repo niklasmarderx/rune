@@ -5,6 +5,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{App, AppMode, ToolStatus};
+use crate::widgets::markdown;
 
 const SPINNER_FRAMES: &[&str] = &[
     "\u{28f7}", "\u{28ef}", "\u{28df}", "\u{287f}", "\u{28bf}", "\u{28fb}", "\u{28fd}", "\u{28fe}",
@@ -40,8 +41,27 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     let elapsed = app
         .elapsed_secs()
         .map_or(String::new(), |s| format!(" | {s:.1}s"));
+
+    let branch = if app.git_branch.is_empty() {
+        String::new()
+    } else {
+        format!(" | \u{e0a0} {}", app.git_branch)
+    };
+
+    let cache_info = if app.status.cache_read_tokens > 0 {
+        format!(" cache:{}", app.status.cache_read_tokens)
+    } else {
+        String::new()
+    };
+
+    let cost = if app.status.cost_usd > 0.0 {
+        format!(" | ${:.4}", app.status.cost_usd)
+    } else {
+        String::new()
+    };
+
     let content = format!(
-        " {} | in:{} out:{}{elapsed}",
+        " {} | in:{} out:{}{cache_info}{cost}{branch}{elapsed}",
         app.status.model, app.status.input_tokens, app.status.output_tokens,
     );
     let bar = Paragraph::new(content).style(
@@ -74,11 +94,21 @@ fn render_conversation(frame: &mut Frame, area: Rect, app: &App) {
                 "Error",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
+            "system" => (
+                "\u{2139}",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            ),
             _ => ("???", Style::default()),
         };
         lines.push(Line::from(vec![Span::styled(format!("{label}: "), style)]));
-        for text_line in block.content.lines() {
-            lines.push(Line::from(text_line.to_string()));
+        if block.role == "assistant" {
+            lines.extend(markdown::markdown_to_lines(&block.content));
+        } else {
+            for text_line in block.content.lines() {
+                lines.push(Line::from(text_line.to_string()));
+            }
         }
         lines.push(Line::from(""));
     }
@@ -91,9 +121,7 @@ fn render_conversation(frame: &mut Frame, area: Rect, app: &App) {
                 .fg(Color::Blue)
                 .add_modifier(Modifier::BOLD),
         )]));
-        for text_line in app.streaming_text.lines() {
-            lines.push(Line::from(text_line.to_string()));
-        }
+        lines.extend(markdown::markdown_to_lines(&app.streaming_text));
         // Blinking cursor indicator.
         let spinner = SPINNER_FRAMES[app.tick % SPINNER_FRAMES.len()];
         lines.push(Line::from(Span::styled(
@@ -109,7 +137,7 @@ fn render_conversation(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(Color::DarkGray),
         )));
         lines.push(Line::from(Span::styled(
-            "Press Esc or Ctrl+C to quit. /exit also works.",
+            "Type /help for commands. Press Esc or Ctrl+C to quit.",
             Style::default().fg(Color::DarkGray),
         )));
     }
@@ -141,8 +169,8 @@ fn render_tool_panel(frame: &mut Frame, area: Rect, app: &App) {
                     let spinner = SPINNER_FRAMES[app.tick % SPINNER_FRAMES.len()];
                     (spinner, Color::Yellow)
                 }
-                ToolStatus::Succeeded => ("\u{2713}", Color::Green), // checkmark
-                ToolStatus::Failed => ("\u{2717}", Color::Red),      // X mark
+                ToolStatus::Succeeded => ("\u{2713}", Color::Green),
+                ToolStatus::Failed => ("\u{2717}", Color::Red),
             };
             Line::from(vec![
                 Span::styled(format!(" {icon} "), Style::default().fg(color)),
@@ -157,22 +185,17 @@ fn render_tool_panel(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_input(frame: &mut Frame, area: Rect, app: &App) {
-    let (input_text, style) = match app.mode {
-        AppMode::Input => (app.input_buffer.as_str(), Style::default()),
+    let display_text = match app.mode {
+        AppMode::Input => format!(" > {}", app.input_buffer),
         AppMode::Waiting => {
             let spinner = SPINNER_FRAMES[app.tick % SPINNER_FRAMES.len()];
-            // Show spinner while waiting — we have to return a short-lived reference,
-            // so we construct the string differently below.
-            let _ = spinner;
-            ("Thinking...", Style::default().fg(Color::DarkGray))
+            format!(" {spinner} Thinking... (Esc to cancel)")
         }
     };
 
-    let display_text = if app.mode == AppMode::Waiting {
-        let spinner = SPINNER_FRAMES[app.tick % SPINNER_FRAMES.len()];
-        format!(" {spinner} Thinking...")
-    } else {
-        format!(" > {input_text}")
+    let style = match app.mode {
+        AppMode::Input => Style::default(),
+        AppMode::Waiting => Style::default().fg(Color::DarkGray),
     };
 
     let input = Paragraph::new(display_text)
@@ -182,10 +205,9 @@ fn render_input(frame: &mut Frame, area: Rect, app: &App) {
 
     // Set cursor position when in input mode.
     if app.mode == AppMode::Input {
-        // +3: border(1) + space(1) + "> "(2) but we used " > " so offset = 4
         #[allow(clippy::cast_possible_truncation)]
         let cursor_x = area.x + 4 + app.input_cursor as u16;
-        let cursor_y = area.y + 1; // inside the border
+        let cursor_y = area.y + 1;
         frame.set_cursor_position((cursor_x, cursor_y));
     }
 }

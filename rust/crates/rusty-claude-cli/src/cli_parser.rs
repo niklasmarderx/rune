@@ -27,6 +27,7 @@ const CLI_OPTION_SUGGESTIONS: &[&str] = &[
     "--allowed-tools",
     "--resume",
     "--print",
+    "--tui",
     "-p",
 ];
 
@@ -74,6 +75,7 @@ pub(crate) enum CliAction {
     },
     // prompt-mode formatting is only supported for non-interactive runs
     Help,
+    Tui,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -172,6 +174,7 @@ pub(crate) fn parse_args(args: &[String]) -> Result<CliAction, String> {
                 output_format = CliOutputFormat::Text;
                 index += 1;
             }
+            "--tui" => return Ok(CliAction::Tui),
             "--resume" if rest.is_empty() => {
                 rest.push("--resume".to_string());
                 index += 1;

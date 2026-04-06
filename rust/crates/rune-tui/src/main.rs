@@ -36,6 +36,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         default_hook(info);
     }));
 
+    // Build event system first (needed by runtime for sending events).
+    let (event_loop, event_tx) = EventLoop::new(std::time::Duration::from_millis(100));
+
+    // Build the persistent runtime before entering raw mode so errors print normally.
+    let worker = match runtime_bridge::RuntimeWorker::start(event_tx.clone()) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Failed to initialize runtime: {e}");
+            eprintln!("Make sure ANTHROPIC_API_KEY is set.");
+            std::process::exit(1);
+        }
+    };
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -44,9 +57,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let (event_loop, event_tx) = EventLoop::new(std::time::Duration::from_millis(100));
-
     let mut app = App::new(event_tx);
+    app.set_runtime_worker(worker);
     let rx = event_loop.into_receiver();
 
     loop {

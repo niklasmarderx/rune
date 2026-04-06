@@ -3,7 +3,7 @@ use std::time::Instant;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::event::TuiEvent;
-use crate::runtime_bridge;
+use crate::runtime_bridge::RuntimeWorker;
 
 /// Operational mode of the TUI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +39,11 @@ pub struct StatusBar {
     pub model: String,
     pub input_tokens: u32,
     pub output_tokens: u32,
+    pub cache_read_tokens: u32,
+    pub cache_create_tokens: u32,
+    pub cost_usd: f64,
+    pub turn_count: u32,
+    pub message_count: usize,
 }
 
 /// Main application state.
@@ -52,13 +57,18 @@ pub struct App {
     pub status: StatusBar,
     pub scroll_offset: u16,
     pub tick: usize,
+    pub git_branch: String,
     quit: bool,
     event_tx: std::sync::mpsc::Sender<TuiEvent>,
     turn_start: Option<Instant>,
+    input_history: Vec<String>,
+    history_index: Option<usize>,
+    shared_runtime: Option<RuntimeWorker>,
 }
 
 impl App {
     pub fn new(event_tx: std::sync::mpsc::Sender<TuiEvent>) -> Self {
+        let git_branch = resolve_git_branch();
         Self {
             mode: AppMode::Input,
             conversation: Vec::new(),
@@ -70,13 +80,26 @@ impl App {
                 model: "claude-opus-4-6".to_string(),
                 input_tokens: 0,
                 output_tokens: 0,
+                cache_read_tokens: 0,
+                cache_create_tokens: 0,
+                cost_usd: 0.0,
+                turn_count: 0,
+                message_count: 0,
             },
             scroll_offset: 0,
             tick: 0,
+            git_branch,
             quit: false,
             event_tx,
             turn_start: None,
+            input_history: Vec::new(),
+            history_index: None,
+            shared_runtime: None,
         }
+    }
+
+    pub fn set_runtime_worker(&mut self, worker: RuntimeWorker) {
+        self.shared_runtime = Some(worker);
     }
 
     pub fn should_quit(&self) -> bool {
@@ -114,11 +137,34 @@ impl App {
                 }
             }
             TuiEvent::Usage(usage) => {
-                self.status.input_tokens = usage.input_tokens;
-                self.status.output_tokens = usage.output_tokens;
+                self.status.input_tokens =
+                    self.status.input_tokens.saturating_add(usage.input_tokens);
+                self.status.output_tokens = self
+                    .status
+                    .output_tokens
+                    .saturating_add(usage.output_tokens);
+                self.status.cache_read_tokens = self
+                    .status
+                    .cache_read_tokens
+                    .saturating_add(usage.cache_read_input_tokens);
+                self.status.cache_create_tokens = self
+                    .status
+                    .cache_create_tokens
+                    .saturating_add(usage.cache_creation_input_tokens);
+                self.status.cost_usd =
+                    runtime::pricing_for_model(&self.status.model).map_or(0.0, |pricing| {
+                        let cumulative = runtime::TokenUsage {
+                            input_tokens: self.status.input_tokens,
+                            output_tokens: self.status.output_tokens,
+                            cache_creation_input_tokens: self.status.cache_create_tokens,
+                            cache_read_input_tokens: self.status.cache_read_tokens,
+                        };
+                        cumulative
+                            .estimate_cost_usd_with_pricing(pricing)
+                            .total_cost_usd()
+                    });
             }
             TuiEvent::TurnComplete(result) => {
-                // Finalize: move streaming text into conversation as assistant block.
                 let text = std::mem::take(&mut self.streaming_text);
                 if !text.is_empty() {
                     self.conversation.push(ConversationBlock {
@@ -134,6 +180,13 @@ impl App {
                 }
                 self.tool_activity.clear();
                 self.turn_start = None;
+                self.status.turn_count += 1;
+
+                // Update message count from runtime.
+                if let Some(worker) = &self.shared_runtime {
+                    self.status.message_count = worker.message_count();
+                }
+
                 self.mode = AppMode::Input;
             }
             TuiEvent::PromptCache(_) | TuiEvent::Resize(_, _) => {}
@@ -153,9 +206,18 @@ impl App {
         match self.mode {
             AppMode::Input => self.handle_input_key(key),
             AppMode::Waiting => {
-                // While waiting, only allow Esc to (future: cancel turn).
                 if key.code == KeyCode::Esc {
-                    // TODO: cancel running turn
+                    // Finalize what we have so far.
+                    let text = std::mem::take(&mut self.streaming_text);
+                    if !text.is_empty() {
+                        self.conversation.push(ConversationBlock {
+                            role: "assistant".to_string(),
+                            content: format!("{text}\n[cancelled]"),
+                        });
+                    }
+                    self.tool_activity.clear();
+                    self.turn_start = None;
+                    self.mode = AppMode::Input;
                 }
             }
         }
@@ -167,10 +229,10 @@ impl App {
             KeyCode::Char(c) => {
                 self.input_buffer.insert(self.input_cursor, c);
                 self.input_cursor += c.len_utf8();
+                self.history_index = None;
             }
             KeyCode::Backspace => {
                 if self.input_cursor > 0 {
-                    // Find the previous char boundary.
                     let prev = self.input_buffer[..self.input_cursor]
                         .char_indices()
                         .next_back()
@@ -195,12 +257,49 @@ impl App {
                         .map_or(self.input_buffer.len(), |(i, _)| self.input_cursor + i);
                 }
             }
+            KeyCode::Home => {
+                self.input_cursor = 0;
+            }
+            KeyCode::End => {
+                self.input_cursor = self.input_buffer.len();
+            }
             KeyCode::Up => {
-                // Scroll conversation up.
-                self.scroll_offset = self.scroll_offset.saturating_add(1);
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    // Shift+Up scrolls conversation.
+                    self.scroll_offset = self.scroll_offset.saturating_add(3);
+                } else if !self.input_history.is_empty() {
+                    // Up navigates input history.
+                    let idx = match self.history_index {
+                        Some(i) => i.saturating_sub(1),
+                        None => self.input_history.len() - 1,
+                    };
+                    self.history_index = Some(idx);
+                    self.input_buffer = self.input_history[idx].clone();
+                    self.input_cursor = self.input_buffer.len();
+                }
             }
             KeyCode::Down => {
-                self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                } else if let Some(idx) = self.history_index {
+                    if idx + 1 < self.input_history.len() {
+                        let next = idx + 1;
+                        self.history_index = Some(next);
+                        self.input_buffer = self.input_history[next].clone();
+                        self.input_cursor = self.input_buffer.len();
+                    } else {
+                        // Past the end of history — clear input.
+                        self.history_index = None;
+                        self.input_buffer.clear();
+                        self.input_cursor = 0;
+                    }
+                }
+            }
+            KeyCode::PageUp => {
+                self.scroll_offset = self.scroll_offset.saturating_add(10);
+            }
+            KeyCode::PageDown => {
+                self.scroll_offset = self.scroll_offset.saturating_sub(10);
             }
             KeyCode::Esc => {
                 self.quit = true;
@@ -215,10 +314,72 @@ impl App {
             return;
         }
 
+        // Save to input history (skip duplicates of last entry).
+        if self.input_history.last() != Some(&input) {
+            self.input_history.push(input.clone());
+        }
+        self.history_index = None;
+
         // Handle local commands.
-        if input == "/exit" || input == "/quit" {
-            self.quit = true;
-            return;
+        match input.as_str() {
+            "/exit" | "/quit" => {
+                self.quit = true;
+                return;
+            }
+            "/clear" => {
+                self.conversation.clear();
+                self.streaming_text.clear();
+                self.input_buffer.clear();
+                self.input_cursor = 0;
+                self.scroll_offset = 0;
+                return;
+            }
+            "/help" => {
+                self.conversation.push(ConversationBlock {
+                    role: "system".to_string(),
+                    content: [
+                        "Available commands:",
+                        "  /help   — Show this help",
+                        "  /clear  — Clear conversation display",
+                        "  /status — Show session status",
+                        "  /exit   — Quit the TUI",
+                        "",
+                        "Shortcuts:",
+                        "  Esc          — Quit (or cancel running turn)",
+                        "  Ctrl+C       — Force quit",
+                        "  Up/Down      — Input history",
+                        "  Shift+Up/Dn  — Scroll conversation",
+                        "  PgUp/PgDn    — Scroll conversation (fast)",
+                        "  Home/End     — Jump to start/end of input",
+                    ]
+                    .join("\n"),
+                });
+                self.input_buffer.clear();
+                self.input_cursor = 0;
+                return;
+            }
+            "/status" => {
+                let status_text = format!(
+                    "Model: {}\nTurns: {}\nMessages: {}\nTokens: {} in / {} out\nCache: {} read / {} create\nCost: ${:.4}\nBranch: {}",
+                    self.status.model,
+                    self.status.turn_count,
+                    self.status.message_count,
+                    self.status.input_tokens,
+                    self.status.output_tokens,
+                    self.status.cache_read_tokens,
+                    self.status.cache_create_tokens,
+                    self.status.cost_usd,
+                    self.git_branch,
+                );
+                self.conversation.push(ConversationBlock {
+                    role: "system".to_string(),
+                    content: status_text,
+                });
+                self.input_buffer.clear();
+                self.input_cursor = 0;
+                return;
+            }
+            _ => {}
         }
 
         // Add user message to conversation.
@@ -232,10 +393,30 @@ impl App {
         self.mode = AppMode::Waiting;
         self.turn_start = Some(Instant::now());
 
-        // Spawn the turn on a background thread.
-        let tx = self.event_tx.clone();
-        std::thread::spawn(move || {
-            runtime_bridge::run_turn_background(&input, &tx);
-        });
+        // Submit turn to the runtime worker.
+        if let Some(worker) = &self.shared_runtime {
+            worker.submit_turn(input);
+        } else {
+            let _ = self
+                .event_tx
+                .send(TuiEvent::TurnComplete(Err(runtime::RuntimeError::new(
+                    "Runtime not initialized",
+                ))));
+        }
     }
+}
+
+fn resolve_git_branch() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|out| {
+            if out.status.success() {
+                Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
 }
