@@ -2,6 +2,10 @@
 
 A high-performance Rust rewrite of the Rune Code CLI agent harness. Built for speed, safety, and native tool execution.
 
+<p align="center">
+  <img src="../assets/demo.gif" alt="Rune Code Demo" width="800"/>
+</p>
+
 For a task-oriented guide with copy/paste examples, see [`../USAGE.md`](../USAGE.md).
 
 ## Quick Start
