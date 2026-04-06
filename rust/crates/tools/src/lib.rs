@@ -3442,6 +3442,7 @@ impl ApiClient for ProviderRuntimeClient {
             tools: (!tools.is_empty()).then_some(tools),
             tool_choice: (!self.allowed_tools.is_empty()).then_some(ToolChoice::Auto),
             stream: true,
+            reasoning_effort: None,
         };
 
         self.runtime.block_on(async {
@@ -6089,6 +6090,11 @@ mod tests {
         let path = temp_path("subagent-input.txt");
         std::fs::write(&path, "hello from child").expect("write input file");
 
+        // Switch cwd to the temp dir so read_file_in_workspace's boundary
+        // check allows reading from /tmp.
+        let previous_cwd = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(std::env::temp_dir()).expect("set cwd to temp");
+
         let mut runtime = ConversationRuntime::new(
             Session::new(),
             MockSubagentApiClient {
@@ -6119,6 +6125,7 @@ mod tests {
                     if output.contains("hello from child")
             )));
 
+        std::env::set_current_dir(previous_cwd).expect("restore cwd");
         let _ = std::fs::remove_file(path);
     }
 
@@ -7038,8 +7045,15 @@ printf 'pwsh:%s' "$1"
         let file = root.join("readable.txt");
         fs::write(&file, "content\n").expect("write test file");
 
+        // Switch cwd to the temp root so the file stays within the workspace
+        // boundary enforced by read_file_in_workspace.
+        let previous_cwd = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(&root).expect("set cwd");
+
         let registry = read_only_registry();
         let result = registry.execute("read_file", &json!({ "path": file.display().to_string() }));
+
+        std::env::set_current_dir(previous_cwd).expect("restore cwd");
         assert!(result.is_ok(), "read_file should be allowed: {result:?}");
 
         let _ = fs::remove_dir_all(root);
