@@ -106,9 +106,18 @@ pub struct LineEditor {
 impl LineEditor {
     #[must_use]
     pub fn new(prompt: impl Into<String>, completions: Vec<String>) -> Self {
+        Self::with_edit_mode(prompt, completions, EditMode::Emacs)
+    }
+
+    #[must_use]
+    pub fn with_edit_mode(
+        prompt: impl Into<String>,
+        completions: Vec<String>,
+        edit_mode: EditMode,
+    ) -> Self {
         let config = Config::builder()
             .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Emacs)
+            .edit_mode(edit_mode)
             .build();
         let mut editor = Editor::<SlashCommandHelper, DefaultHistory>::with_config(config)
             .expect("rustyline editor should initialize");

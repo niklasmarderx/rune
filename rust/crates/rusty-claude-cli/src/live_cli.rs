@@ -532,11 +532,26 @@ pub(crate) fn run_repl(
     permission_mode: PermissionMode,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut cli = LiveCli::new(model, true, allowed_tools, permission_mode)?;
+    let mut current_vim_mode = cli.vim_mode();
     let mut editor =
         super::input::LineEditor::new("> ", cli.repl_completion_candidates().unwrap_or_default());
     println!("{}", cli.startup_banner());
 
     loop {
+        // Recreate the editor when vim mode has been toggled.
+        if cli.vim_mode() != current_vim_mode {
+            current_vim_mode = cli.vim_mode();
+            let edit_mode = if current_vim_mode {
+                rustyline::EditMode::Vi
+            } else {
+                rustyline::EditMode::Emacs
+            };
+            editor = super::input::LineEditor::with_edit_mode(
+                "> ",
+                cli.repl_completion_candidates().unwrap_or_default(),
+                edit_mode,
+            );
+        }
         editor.set_completions(cli.repl_completion_candidates().unwrap_or_default());
         match editor.read_line()? {
             super::input::ReadOutcome::Submit(input) => {
@@ -889,6 +904,7 @@ fn render_system_prompt_report() -> Result<String, Box<dyn std::error::Error>> {
     Ok(lines.join("\n"))
 }
 
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct LiveCli {
     model: String,
     allowed_tools: Option<AllowedToolSet>,
@@ -899,6 +915,8 @@ pub(crate) struct LiveCli {
     planning_mode: bool,
     brief_mode: bool,
     advisor_mode: bool,
+    effort_level: Option<String>,
+    vim_mode: bool,
 }
 
 impl LiveCli {
@@ -932,6 +950,8 @@ impl LiveCli {
             planning_mode: false,
             brief_mode: false,
             advisor_mode: false,
+            effort_level: None,
+            vim_mode: false,
         };
         cli.persist_session()?;
         Ok(cli)
@@ -1026,6 +1046,15 @@ impl LiveCli {
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(true)?;
         let mut stdout = io::stdout();
 
+        // Apply effort level to the API client for this turn.
+        runtime
+            .api_client_mut()
+            .effort_level
+            .clone_from(&self.effort_level);
+
+        // Build the effective input by prepending mode instructions.
+        let effective_input = self.build_effective_input(input);
+
         // Animated spinner with rotating creative messages
         let stop_spinner = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let stop_flag = stop_spinner.clone();
@@ -1072,7 +1101,7 @@ impl LiveCli {
         });
 
         let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let result = runtime.run_turn(input, Some(&mut permission_prompter));
+        let result = runtime.run_turn(&effective_input, Some(&mut permission_prompter));
         hook_abort_monitor.stop();
 
         // Stop spinner animation (may already be stopped by the stream handler)
@@ -1130,8 +1159,13 @@ impl LiveCli {
 
     fn run_prompt_json(&mut self, input: &str) -> Result<(), Box<dyn std::error::Error>> {
         let (mut runtime, hook_abort_monitor) = self.prepare_turn_runtime(false)?;
+        runtime
+            .api_client_mut()
+            .effort_level
+            .clone_from(&self.effort_level);
+        let effective_input = self.build_effective_input(input);
         let mut permission_prompter = CliPermissionPrompter::new(self.permission_mode);
-        let result = runtime.run_turn(input, Some(&mut permission_prompter));
+        let result = runtime.run_turn(&effective_input, Some(&mut permission_prompter));
         hook_abort_monitor.stop();
         let summary = result?;
         self.replace_runtime(runtime)?;
@@ -1574,20 +1608,22 @@ impl LiveCli {
         println!("\nAll checks passed.");
     }
 
-    fn set_effort(&self, level: Option<&str>) {
+    fn set_effort(&mut self, level: Option<&str>) {
         let Some(level) = level.map(str::trim).filter(|l| !l.is_empty()) else {
+            let current = self.effort_level.as_deref().unwrap_or("default");
             println!(
                 "Effort level\n\
                  \n\
                  Usage: /effort <low|medium|high>\n\
                  \n\
                  Controls how much effort the model puts into responses.\n\
-                 Currently set to: default"
+                 Currently set to: {current}"
             );
             return;
         };
         match level {
             "low" | "medium" | "high" => {
+                self.effort_level = Some(level.to_string());
                 println!("Effort level set to: {level}");
             }
             other => {
@@ -1626,13 +1662,18 @@ impl LiveCli {
         Ok(())
     }
 
-    fn toggle_vim(&self) {
+    fn toggle_vim(&mut self) {
+        self.vim_mode = !self.vim_mode;
+        let mode = if self.vim_mode { "vi" } else { "emacs" };
         println!(
             "Vim Mode\n\
-             \x20 Status           under development\n\
-             \x20 Input system     rustyline (requires EditMode::Vi)\n\
-             \x20 Track progress   https://github.com/niklasmarderx/rune/issues"
+             \x20 Status           {mode}\n\
+             \x20 Note             editor will be recreated with {mode} keybindings"
         );
+    }
+
+    pub(crate) fn vim_mode(&self) -> bool {
+        self.vim_mode
     }
 
     fn handle_context(&self, action: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
@@ -2478,6 +2519,27 @@ impl LiveCli {
                 "The model will write code normally."
             }
         );
+    }
+
+    /// Build the effective user input by prepending active mode instructions.
+    fn build_effective_input(&self, input: &str) -> String {
+        let mut prefixes = Vec::new();
+        if self.brief_mode {
+            prefixes.push("Be concise. Give brief, direct answers without elaboration.");
+        }
+        if self.advisor_mode {
+            prefixes.push(
+                "Only provide guidance and explanations. Do not write code directly unless explicitly asked.",
+            );
+        }
+        if self.planning_mode {
+            prefixes
+                .push("Think step by step. Break down the task into a plan before implementing.");
+        }
+        if prefixes.is_empty() {
+            return input.to_string();
+        }
+        format!("[{}]\n\n{}", prefixes.join(" "), input)
     }
 
     fn run_upgrade(&self) {

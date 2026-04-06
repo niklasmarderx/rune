@@ -711,6 +711,7 @@ mod tests {
             tools: None,
             tool_choice: None,
             stream: false,
+            reasoning_effort: None,
         }
     }
 

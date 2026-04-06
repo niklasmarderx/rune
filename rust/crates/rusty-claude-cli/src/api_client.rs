@@ -34,6 +34,8 @@ pub(crate) struct AnthropicRuntimeClient {
     /// causing the spinner thread to exit immediately so it no longer competes
     /// with the response output on stdout.
     pub(crate) spinner_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Reasoning effort level for the API request (`low`, `medium`, or `high`).
+    pub(crate) effort_level: Option<String>,
 }
 
 impl AnthropicRuntimeClient {
@@ -59,6 +61,7 @@ impl AnthropicRuntimeClient {
             tool_registry,
             progress_reporter,
             spinner_stop: None,
+            effort_level: None,
         })
     }
 }
@@ -79,6 +82,7 @@ impl ApiClient for AnthropicRuntimeClient {
                 .then(|| filter_tool_specs(&self.tool_registry, self.allowed_tools.as_ref())),
             tool_choice: self.enable_tools.then_some(ToolChoice::Auto),
             stream: true,
+            reasoning_effort: self.effort_level.clone(),
         };
 
         self.runtime.block_on(async {
