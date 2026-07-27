@@ -28,7 +28,12 @@
 
 <p align="center">
   <a href="https://niklasmarderx.github.io/rune/"><strong>🌐 Rune Code — Project Website</strong></a>
+</p>
 
+<p align="center">
+  <a href="https://github.com/niklasmarderx/rune/actions/workflows/rust-ci.yml"><img src="https://github.com/niklasmarderx/rune/actions/workflows/rust-ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://github.com/niklasmarderx/rune/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-stable-orange.svg" alt="Rust stable"/></a>
 </p>
 
 <p align="center">
